@@ -1,0 +1,187 @@
+<script setup lang="ts">
+import type { ProjectDto } from '@clipstudio/core/shared'
+
+const route = useRoute()
+const id = computed(() => String(route.params.id))
+const toast = useToast()
+
+const { data: project, refresh, error } = await useFetch<ProjectDto>(() => `/api/projects/${id.value}`)
+
+onJobStatusChange((job) => {
+  if (job.projectId === id.value) void refresh()
+})
+
+const { activeFor, cancel } = useJobs()
+const { uploads, cancel: cancelUpload } = useUploads()
+const job = computed(() => activeFor(id.value))
+const upload = computed(() => uploads.value[id.value])
+const activity = computed(() => (project.value ? describeProject(project.value, job.value, upload.value) : null))
+watch(
+  () => !!upload.value,
+  (now, before) => {
+    if (before && !now) void refresh()
+  },
+)
+
+const action = ref<'rename' | 'trash' | null>(null)
+function onChanged(updated: ProjectDto) {
+  if (updated.deletedAt) navigateTo('/')
+  else project.value = updated
+}
+
+const retrying = ref(false)
+async function retry() {
+  retrying.value = true
+  try {
+    project.value = await $fetch<ProjectDto>(`/api/projects/${id.value}/retry`, { method: 'POST' })
+  } catch (e) {
+    toast.add({ title: 'Could not retry', description: (e as Error).message, color: 'error' })
+  } finally {
+    retrying.value = false
+  }
+}
+
+async function stop() {
+  try {
+    if (upload.value) cancelUpload(id.value)
+    else if (job.value) await cancel(job.value.id)
+  } catch (e) {
+    toast.add({ title: 'Could not stop', description: (e as Error).message, color: 'error' })
+  }
+}
+
+const vertical = computed(() => !!project.value?.width && !!project.value.height && project.value.height > project.value.width)
+
+const proxyUrl = computed(() =>
+  project.value?.assets.proxy ? `/api/projects/${id.value}/media/proxy?v=${project.value.assets.proxy.updatedAt}` : null,
+)
+
+const details = computed(() => {
+  const p = project.value
+  if (!p) return []
+  const rows: { label: string; value: string; href?: string }[] = [
+    { label: 'Length', value: formatDuration(p.durationMs) },
+    { label: 'Size', value: p.width && p.height ? `${p.width} × ${p.height}${p.height > p.width ? ' (vertical)' : ''}` : '' },
+    { label: 'Frame rate', value: p.fps ? `${Math.round(p.fps * 100) / 100} fps` : '' },
+    { label: 'Sound', value: p.hasAudio === null ? '' : p.hasAudio ? 'Yes' : 'No audio track' },
+  ]
+  if (p.sourceType === 'youtube') {
+    rows.push({ label: 'Source', value: p.sourceMeta?.channel ? `YouTube · ${p.sourceMeta.channel}` : 'YouTube', href: p.sourceUrl ?? undefined })
+  } else {
+    rows.push({ label: 'Source', value: 'Uploaded file' })
+  }
+  rows.push({ label: 'Imported', value: new Date(p.createdAt).toLocaleString() })
+  rows.push({ label: 'On disk', value: formatBytes(p.storageBytes) })
+  return rows.filter((r) => r.value)
+})
+</script>
+
+<template>
+  <PageShell :title="project?.name ?? 'Project'">
+    <template #actions>
+      <template v-if="project">
+        <UButton label="Rename" icon="i-lucide-pencil" color="neutral" variant="ghost" class="hidden sm:inline-flex" @click="action = 'rename'" />
+        <UButton label="Move to Trash" icon="i-lucide-trash-2" color="neutral" variant="ghost" class="hidden sm:inline-flex" @click="action = 'trash'" />
+      </template>
+    </template>
+
+    <UEmpty
+      v-if="error"
+      icon="i-lucide-search-x"
+      title="Project not found"
+      description="It may have been deleted for good."
+      :actions="[{ label: 'Back to Projects', to: '/' }]"
+      class="py-16"
+    />
+
+    <div v-else-if="project && activity" class="mx-auto w-full max-w-6xl space-y-6">
+      <UBreadcrumb :items="[{ label: 'Projects', to: '/' }, { label: project.name }]" />
+
+      <!-- Still importing, or failed -->
+      <UCard v-if="project.status !== 'ready'">
+        <div class="flex flex-col gap-6 sm:flex-row">
+          <img
+            v-if="thumbnailUrl(project)"
+            :src="thumbnailUrl(project)!"
+            alt=""
+            class="aspect-video w-full rounded-md object-cover sm:w-72"
+            :class="{ 'opacity-60': activity.busy }"
+          />
+          <div class="flex min-w-0 flex-1 flex-col justify-center gap-3">
+            <div class="flex items-center gap-2">
+              <UIcon
+                :name="activity.busy ? 'i-lucide-loader-circle' : activity.tone === 'error' ? 'i-lucide-circle-x' : 'i-lucide-triangle-alert'"
+                class="size-5"
+                :class="{ 'animate-spin text-primary': activity.busy, 'text-error': activity.tone === 'error', 'text-warning': activity.tone === 'warning' }"
+              />
+              <p class="font-medium">{{ activity.label }}</p>
+            </div>
+            <UProgress v-if="activity.busy" :model-value="activity.progress === null ? null : Math.round(activity.progress * 100)" />
+            <p v-if="activity.detail" class="text-sm" :class="activity.tone === 'error' ? 'text-error' : 'text-muted'">{{ activity.detail }}</p>
+            <div class="flex gap-2">
+              <ConfirmButton v-if="activity.busy" label="Stop" confirm-label="Stop importing?" icon="i-lucide-square" size="sm" @confirm="stop" />
+              <UButton v-if="project.status === 'failed'" label="Try again" icon="i-lucide-rotate-ccw" size="sm" :loading="retrying" @click="retry" />
+              <UButton
+                v-if="!activity.busy"
+                label="Move to Trash"
+                icon="i-lucide-trash-2"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                @click="action = 'trash'"
+              />
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <!-- Ready -->
+      <div v-else class="grid gap-6 lg:grid-cols-3">
+        <div class="lg:col-span-2">
+          <div class="overflow-hidden rounded-lg bg-black">
+            <video
+              v-if="proxyUrl"
+              :key="proxyUrl"
+              :src="proxyUrl"
+              :poster="thumbnailUrl(project) ?? undefined"
+              controls
+              preload="metadata"
+              class="mx-auto"
+              :class="vertical ? 'aspect-[9/16] max-h-[70vh]' : 'aspect-video w-full'"
+            />
+          </div>
+        </div>
+        <div class="space-y-6">
+          <UCard>
+            <dl class="space-y-3 text-sm">
+              <div v-for="row in details" :key="row.label" class="flex justify-between gap-4">
+                <dt class="text-muted">{{ row.label }}</dt>
+                <dd class="truncate text-right">
+                  <ULink v-if="row.href" :to="row.href" target="_blank" class="inline-flex items-center gap-1">
+                    {{ row.value }} <UIcon name="i-lucide-external-link" class="size-3" />
+                  </ULink>
+                  <template v-else>{{ row.value }}</template>
+                </dd>
+              </div>
+            </dl>
+          </UCard>
+          <UCard>
+            <h2 class="font-semibold">Next</h2>
+            <ul class="mt-3 space-y-3 text-sm">
+              <li class="flex gap-3">
+                <UIcon name="i-lucide-captions" class="mt-0.5 size-4 shrink-0 text-muted" />
+                <span><span class="font-medium">Transcript</span> <span class="text-muted">with word timings, coming in phase 2.</span></span>
+              </li>
+              <li class="flex gap-3">
+                <UIcon name="i-lucide-sparkles" class="mt-0.5 size-4 shrink-0 text-muted" />
+                <span><span class="font-medium">Find clips with Claude</span> <span class="text-muted">coming in phase 3.</span></span>
+              </li>
+            </ul>
+          </UCard>
+        </div>
+      </div>
+    </div>
+
+    <ProjectActionModals v-model:action="action" :project="project ?? null" @changed="onChanged" />
+  </PageShell>
+</template>

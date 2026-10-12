@@ -1,0 +1,19 @@
+{
+  "name": "@clipstudio/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@clipstudio/core": "workspace:*",
+    "@clipstudio/media": "workspace:*",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

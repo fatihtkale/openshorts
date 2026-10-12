@@ -1,0 +1,23 @@
+{
+  "name": "clipstudio",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n web,worker -c blue,magenta \"pnpm --filter @clipstudio/web dev\" \"pnpm --filter @clipstudio/worker dev\"",
+    "build": "pnpm --filter @clipstudio/web build",
+    "start": "concurrently -k -n web,worker -c blue,magenta \"pnpm --filter @clipstudio/web start\" \"pnpm --filter @clipstudio/worker start\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @clipstudio/core db:generate"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.4"
+  }
+}
