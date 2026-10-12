@@ -11,6 +11,7 @@ import type {
 } from '@clipstudio/core'
 import { demoCount } from './demo'
 import { createDownloadHandler } from './download'
+import { createFacesHandler } from './faces'
 import { createModelDownloadHandler } from './models'
 import { createPrepareHandler } from './prepare'
 import { createRenderHandler } from './render'
@@ -49,6 +50,7 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
     'demo.count': demoCount,
     'ingest.download': createDownloadHandler(deps),
     'media.prepare': createPrepareHandler(deps),
+    'media.faces': createFacesHandler(deps),
     transcribe: createTranscribeHandler(deps),
     'models.download': createModelDownloadHandler(deps),
     'clip.render': createRenderHandler(deps),

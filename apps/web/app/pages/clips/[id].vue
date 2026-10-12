@@ -12,6 +12,12 @@ const safeZones = ref(false)
 const exportOpen = ref(false)
 const canvasRef = ref<{ seek: (ms: number) => void; video: HTMLVideoElement | undefined } | null>(null)
 
+// Face analysis or exports finishing elsewhere: reload what the editor shows.
+onJobStatusChange((job) => {
+  if (job.projectId !== data.value?.project.id) return
+  if (job.type === 'media.faces' && (job.status === 'succeeded' || job.status === 'failed')) void editor.refresh()
+})
+
 const title = computed({
   get: () => draft.value?.title ?? '',
   set: (v: string) => editor.update((d) => (d.title = v), 'title'),

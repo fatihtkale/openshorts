@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { effectiveCuts, keptSegments, wordsToOutput } from '@clipstudio/captions'
+import { effectiveCuts, keptSegments, resolveLayout, wordsToOutput, type FaceTrack } from '@clipstudio/captions'
 import { projectPrefix } from '@clipstudio/core'
 import { renderClip } from '@clipstudio/media'
 import type { HandlerDeps, JobHandler } from './index'
@@ -21,6 +21,11 @@ export function createRenderHandler({ projects, transcripts, clips, renders, sto
     const segments = keptSegments(range, effectiveCuts(words, range, clip.edit.trim))
     const captionWords = wordsToOutput(words, segments, { keywords: clip.keywords, emojis: clip.edit.emojis })
 
+    // "Follow faces": the crop path comes from the project's face track.
+    const facesAsset = projects.asset(project.id, 'faces')
+    const track = facesAsset ? (JSON.parse((await storage.get(facesAsset.storageKey)).toString()) as FaceTrack) : null
+    const layout = resolveLayout(clip.edit.layout, track, range)
+
     const prefix = projectPrefix(project.id)
     const key = `${prefix}/renders/${renderId}.mp4`
     const out = await storage.localWritePath(key)
@@ -30,7 +35,7 @@ export function createRenderHandler({ projects, transcripts, clips, renders, sto
       source: { width: project.width, height: project.height, hasAudio: project.hasAudio !== false },
       segments,
       clipStartMs: clip.startMs,
-      layout: clip.edit.layout,
+      layout,
       captions: clip.edit.captions.enabled && captionWords.length ? { style: clip.edit.captions.style, words: captionWords } : null,
       hook: clip.edit.hook.enabled ? clip.edit.hook : null,
       out,

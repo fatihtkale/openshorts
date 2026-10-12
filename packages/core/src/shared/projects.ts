@@ -7,7 +7,7 @@ export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
 export const SOURCE_TYPES = ['youtube', 'upload'] as const
 export type SourceType = (typeof SOURCE_TYPES)[number]
 
-export const ASSET_KINDS = ['source', 'proxy', 'audio', 'thumbnail'] as const
+export const ASSET_KINDS = ['source', 'proxy', 'audio', 'thumbnail', 'faces'] as const
 export type AssetKind = (typeof ASSET_KINDS)[number]
 
 export const DOWNLOAD_QUALITIES = ['1080', '720', 'best'] as const

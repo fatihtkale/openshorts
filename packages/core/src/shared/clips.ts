@@ -65,8 +65,9 @@ const range = z.object({ start: z.number().min(0), end: z.number().min(0) })
 export const clipEditSchema = z.object({
   layout: z.object({
     mode: z.enum(LAYOUT_MODES),
+    auto: z.boolean().optional(),
     zoom: z.number().min(1).max(4),
-    keyframes: z.array(z.object({ t: z.number().min(0), x: unit, y: unit })).min(1).max(500),
+    keyframes: z.array(z.object({ t: z.number().min(0), x: unit, y: unit, ease: z.enum(['smooth', 'linear']).optional() })).min(1).max(2000),
     split: z.object({
       top: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(4) }),
       bottom: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(4) }),
@@ -142,19 +143,26 @@ export interface ProposalDto {
 }
 
 /**
- * Moves clip edges onto word boundaries so a clip never starts or ends mid-word:
- * the start goes to the first word that overlaps it, the end to the last word that overlaps it,
- * with a little breathing room on both sides.
+ * Keeps clip edges from cutting a word in half: an edge that lands inside a word moves out to include all of it,
+ * with a little breathing room. Edges in silence stay where they are, so footage without speech isn't trimmed away.
  */
 export function snapToWords(words: Word[], startMs: number, endMs: number, durationMs: number): { startMs: number; endMs: number } {
-  const inside = words.filter((w) => w.end > startMs && w.start < endMs)
-  if (!inside.length) return { startMs: Math.max(0, startMs), endMs: Math.min(durationMs, endMs) }
-  const first = inside[0]!
-  const last = inside.at(-1)!
-  return {
-    startMs: Math.max(0, first.start - 100),
-    endMs: Math.min(durationMs, last.end + 250),
+  let start = Math.max(0, startMs)
+  let end = Math.min(durationMs, endMs)
+  const atStart = words.find((w) => w.start < start && w.end > start)
+  if (atStart) start = Math.max(0, atStart.start - 100)
+  else {
+    // Starting right on (or just before) a word: give it a moment of air.
+    const next = words.find((w) => w.start >= start && w.start - start < 100)
+    if (next) start = Math.max(0, next.start - 100)
   }
+  const atEnd = words.find((w) => w.start < end && w.end > end)
+  if (atEnd) end = Math.min(durationMs, atEnd.end + 250)
+  else {
+    const prev = [...words].reverse().find((w) => w.end <= end && end - w.end < 250)
+    if (prev) end = Math.min(durationMs, prev.end + 250)
+  }
+  return { startMs: start, endMs: end }
 }
 
 /** Share of the shorter range covered by both, 0..1. */

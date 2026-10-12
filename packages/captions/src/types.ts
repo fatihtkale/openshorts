@@ -73,6 +73,8 @@ export interface CropKeyframe {
   t: number
   x: number
   y: number
+  /** How to move from here to the next keyframe: eased (default, for hand-made moves) or linear (smoothed paths). */
+  ease?: 'smooth' | 'linear'
 }
 
 /** A fixed window for split layouts: centre 0..1 and zoom (1 = as large as fits). */
@@ -84,6 +86,8 @@ export interface PanelWindow {
 
 export interface ClipLayout {
   mode: LayoutMode
+  /** Fill: follow faces automatically (keyframes come from the project's face track). */
+  auto?: boolean
   /** Fill: 1 = the 9:16 window is as tall as the source; 2 = twice as close. */
   zoom: number
   /** Fill: one keyframe = a still window; more = the window moves (eased) between them. */

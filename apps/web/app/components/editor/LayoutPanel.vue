@@ -33,6 +33,23 @@ const zoom = computed({
   get: () => layout.value.zoom,
   set: (z: number) => props.editor.update((d) => (d.edit.layout.zoom = z), 'layout-zoom'),
 })
+const { active } = useJobs()
+const project = computed(() => props.editor.data.value?.project)
+const analysing = computed(() => active.value.find((j) => j.type === 'media.faces' && j.projectId === project.value?.id))
+const hasTrack = computed(() => !!props.editor.faceTrack.value)
+const follow = computed({
+  get: () => !!layout.value.auto,
+  set: (on: boolean) => props.editor.update((d) => (d.edit.layout.auto = on)),
+})
+const toast = useToast()
+async function analyse() {
+  try {
+    await $fetch(`/api/projects/${project.value!.id}/faces`, { method: 'POST' })
+  } catch (e) {
+    toast.add({ title: 'Could not start face analysis', description: (e as Error).message, color: 'error' })
+  }
+}
+
 const animate = computed({
   get: () => layout.value.keyframes.length > 1,
   set: (on: boolean) => {
@@ -57,7 +74,10 @@ function size() {
 
 function windows(): { key: 'fill' | 'top' | 'bottom'; rect: Rect; colour: string }[] {
   const { vw, vh } = size()
-  if (layout.value.mode === 'fill') return [{ key: 'fill', rect: fillRect(layout.value, vw, vh, clipTime.value), colour: '#a78bfa' }]
+  if (layout.value.mode === 'fill') {
+    const drawn = props.editor.layout.value ?? layout.value
+    return [{ key: 'fill', rect: fillRect(drawn, vw, vh, clipTime.value), colour: drawn.auto && hasTrack.value ? '#22c55e' : '#a78bfa' }]
+  }
   if (layout.value.mode === 'split') {
     return [
       { key: 'top', rect: panelRect(layout.value.split.top, vw, vh), colour: '#a78bfa' },
@@ -135,6 +155,10 @@ function onMove(e: PointerEvent) {
     if (key === 'top' || key === 'bottom') {
       l.split[key].x = x
       l.split[key].y = y
+    } else if (l.auto) {
+      // Taking over by hand: stop following faces and hold the window here.
+      l.auto = false
+      l.keyframes = [{ t: 0, x, y }]
     } else if (l.keyframes.length === 1) {
       l.keyframes[0] = { t: 0, x, y }
     } else {
@@ -231,14 +255,30 @@ const modes = [
     <p v-else class="text-sm text-muted">The whole frame is shown, centred on a soft, blurred copy of itself. Nothing to frame.</p>
 
     <template v-if="mode === 'fill'">
+      <div class="rounded-lg border border-default p-3">
+        <USwitch v-model="follow" label="Follow faces" description="The crop keeps the main speaker in frame and cuts with the shots." />
+        <p class="mt-2 pl-11 text-xs text-muted">
+          <template v-if="analysing">
+            Looking for faces… {{ Math.round(analysing.progress * 100) }}%
+          </template>
+          <template v-else-if="hasTrack && editor.coverage.value !== null">
+            {{ editor.coverage.value > 0.05 ? `A face is visible in ${Math.round(editor.coverage.value * 100)}% of this clip.` : 'No faces found in this clip, so it stays centred.' }}
+            <template v-if="follow"> Drag the box to take over by hand.</template>
+          </template>
+          <template v-else>
+            Faces haven't been analysed for this video yet.
+            <UButton label="Find faces" size="xs" color="neutral" variant="link" class="p-0" @click="analyse" />
+          </template>
+        </p>
+      </div>
       <UFormField :label="`Zoom · ${zoom.toFixed(1)}×`">
         <USlider v-model="zoom" :min="1" :max="3" :step="0.05" />
       </UFormField>
-      <div class="flex flex-wrap items-center gap-4">
+      <div v-if="!follow || !hasTrack" class="flex flex-wrap items-center gap-4">
         <USwitch v-model="animate" label="Move over time" description="Pan between positions, like a camera operator." />
         <UButton label="Centre" icon="i-lucide-focus" color="neutral" variant="outline" size="sm" class="ml-auto" @click="centre" />
       </div>
-      <div v-if="animate" class="flex flex-wrap gap-2">
+      <div v-if="animate && (!follow || !hasTrack)" class="flex flex-wrap gap-2">
         <UBadge
           v-for="k in layout.keyframes"
           :key="k.t"

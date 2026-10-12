@@ -38,7 +38,8 @@ export function centreAt(keyframes: CropKeyframe[], t: number): { x: number; y: 
     const a = sorted[i]!
     const b = sorted[i + 1]!
     if (t < b.t) {
-      const p = easeInOut((t - a.t) / Math.max(1, b.t - a.t))
+      const linear = (t - a.t) / Math.max(1, b.t - a.t)
+      const p = a.ease === 'linear' ? linear : easeInOut(linear)
       return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p }
     }
   }

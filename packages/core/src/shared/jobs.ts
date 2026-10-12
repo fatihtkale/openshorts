@@ -40,6 +40,12 @@ export const jobDefinitions = {
     maxAttempts: 2,
     payload: z.object({ projectId: z.string() }),
   },
+  'media.faces': {
+    label: 'Find faces',
+    group: 'media',
+    maxAttempts: 2,
+    payload: z.object({ projectId: z.string() }),
+  },
   transcribe: {
     label: 'Transcribe',
     group: 'transcribe',

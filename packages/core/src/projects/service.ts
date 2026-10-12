@@ -135,6 +135,14 @@ export class ProjectService {
     })
   }
 
+  /** Queues face analysis (used to frame vertical clips automatically), unless it's already running. */
+  requestFaces(id: string): void {
+    const project = this.require(id)
+    if (project.status !== 'ready') throw new ProjectError('The video has to finish importing first', 'conflict')
+    if (this.queue.activeForProject(id).some((j) => j.type === 'media.faces')) return
+    this.queue.enqueue('media.faces', { projectId: id }, { projectId: id })
+  }
+
   markReady(id: string, media: { durationMs: number; width: number; height: number; fps: number; hasAudio: boolean }) {
     this.update(id, { ...media, status: 'ready', error: null })
   }

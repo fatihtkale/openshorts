@@ -55,7 +55,8 @@ export function createPrepareHandler({ projects, storage, transcripts, models }:
     })
     ctx.log(`ready (${info.width}x${info.height} @ ${info.fps} fps, encoder ${encoder})`)
 
-    // Transcription starts on its own once a speech model is installed.
+    // Face analysis (for automatic framing) and transcription start on their own.
+    projects.requestFaces(projectId)
     if (info.hasAudio && models.active() && !transcripts.get(projectId)) transcripts.request(projectId, 'auto')
     return { encoder }
   }

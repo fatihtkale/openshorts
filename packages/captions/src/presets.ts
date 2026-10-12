@@ -117,6 +117,7 @@ export function defaultEdit(opts: { hook?: string | null; presetId?: string; emo
   return {
     layout: {
       mode: 'fill',
+      auto: true,
       zoom: 1,
       keyframes: [{ t: 0, x: 0.5, y: 0.5 }],
       split: { top: { x: 0.25, y: 0.5, zoom: 1 }, bottom: { x: 0.75, y: 0.5, zoom: 1 } },

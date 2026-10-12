@@ -31,6 +31,8 @@ const JOB_WORDS: Record<string, [running: string, queued: string]> = {
   'ingest.download': ['Downloading', 'Waiting to download'],
   'media.prepare': ['Preparing video', 'Waiting to prepare'],
   transcribe: ['Transcribing', 'Waiting to transcribe'],
+  'media.faces': ['Finding faces', 'Waiting to find faces'],
+  'clip.render': ['Exporting', 'Waiting to export'],
 }
 
 /** What a project is doing right now, combining its status, its active job and any upload in this tab. */

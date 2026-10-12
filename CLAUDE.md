@@ -35,7 +35,8 @@ Run `pnpm test` and `pnpm typecheck` before calling a change done.
 - ffmpeg, yt-dlp and whisper-cpp come from Homebrew; System check (`/system`) reports what's missing.
   Homebrew's yt-dlp pulls in Deno, which yt-dlp needs to solve YouTube's JS challenges.
 - YouTube section downloads (`--download-sections`) fail now and then with "ffmpeg exited with code 8"; the job retry covers it.
-- Use a Creative Commons video for manual download tests (e.g. Blender's Big Buck Bunny, `aqz-KE-bpKQ`).
+- Use a Creative Commons video for manual download tests (e.g. Blender's Big Buck Bunny, `aqz-KE-bpKQ`;
+  for faces, Tears of Steel `R6MlUcmOul8`, CC-BY 3.0, close-ups around 0:58–1:05).
 
 ## Project files
 
@@ -59,6 +60,12 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
   Node draws caption frames with `@napi-rs/canvas` and pipes them in as raw RGBA. ~3× real time on the M1 Pro.
 - Fonts come from Fontsource (woff2): the browser imports their CSS, the exporter registers the same files.
 - `pnpm --filter @clipstudio/worker caption-sheet` draws every preset to `data/dev/caption-sheet.png` for a quick look.
+- Follow faces: `media.faces` (queued after `media.prepare`) samples the preview at 5/s, runs UltraFace RFB-320
+  (onnxruntime-node, model fetched once into `data/models/` and checked by SHA-256) and stores `faces.json`
+  (boxes per sample + scene cuts). `resolveLayout`/`autoFrame` turn it into a smoothed crop path; new clips default
+  to `layout.auto = true`. `pnpm --filter @clipstudio/worker exec tsx src/dev/faces.ts <projectId> <ms> <w> <h> --sheet`
+  draws detections to `data/dev/faces-sheet.jpg`.
+- `snapToWords` only moves an edge that falls inside a word; edges in silence stay (visual moments aren't trimmed).
 
 ## Claude / MCP
 

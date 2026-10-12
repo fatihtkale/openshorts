@@ -62,3 +62,19 @@ describe('nameFromFilename', () => {
     expect(nameFromFilename('.mp4')).toBe('Untitled video')
   })
 })
+
+describe('snapToWords', async () => {
+  const { snapToWords } = await import('./clips')
+  const words = [
+    { text: 'one', start: 1000, end: 1400, p: 1 },
+    { text: 'two', start: 5000, end: 5400, p: 1 },
+  ]
+
+  it('moves an edge that cuts a word out to include all of it', () => {
+    expect(snapToWords(words, 1200, 5200, 10_000)).toEqual({ startMs: 900, endMs: 5650 })
+  })
+
+  it('leaves edges in silence alone, so footage without speech is kept', () => {
+    expect(snapToWords(words, 2000, 9000, 10_000)).toEqual({ startMs: 2000, endMs: 9000 })
+  })
+})

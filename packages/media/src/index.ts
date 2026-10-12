@@ -1,5 +1,6 @@
 export * from './download'
 export * from './ffmpeg'
+export * from './faces'
 export * from './ffprobe'
 export * from './frames'
 export * from './prepare'

@@ -77,3 +77,29 @@ describe('ffmpeg', () => {
     expect(thumbnailTime(3_600_000)).toBe(10)
   })
 })
+
+describe('face detector helpers', async () => {
+  const { decodeFaces, letterbox, unpad, frameDifference } = await import('./faces')
+
+  it('keeps confident boxes, removes overlaps and sorts by size', () => {
+    // Three candidates: two overlapping faces (keep the more confident), one weak box.
+    const scores = new Float32Array([0.1, 0.9, 0.2, 0.8, 0.6, 0.4])
+    const boxes = new Float32Array([0.1, 0.1, 0.3, 0.4, 0.11, 0.1, 0.31, 0.41, 0.6, 0.6, 0.7, 0.7])
+    const faces = decodeFaces(scores, boxes)
+    expect(faces).toHaveLength(1)
+    expect(faces[0]).toMatchObject({ x: 0.1, y: 0.1, score: 0.9 })
+  })
+
+  it('fits wide video without stretching and maps boxes back', () => {
+    const fit = letterbox(1920, 800)
+    expect(fit).toEqual({ x: 0, y: 53, w: 320, h: 134 })
+    // A box in the middle of the padded input is in the middle of the source.
+    const [f] = unpad([{ x: 0.45, y: 0.45, w: 0.1, h: 0.1, score: 1 }], { x: 0, y: 60, w: 320, h: 120 })
+    expect(f!.y).toBeCloseTo(0.4, 2)
+    expect(unpad([{ x: 0.1, y: 0.01, w: 0.1, h: 0.05, score: 1 }], { x: 0, y: 60, w: 320, h: 120 })).toEqual([])
+  })
+
+  it('measures frame differences', () => {
+    expect(frameDifference(new Uint8Array([0, 10]), new Uint8Array([10, 10]))).toBe(5)
+  })
+})

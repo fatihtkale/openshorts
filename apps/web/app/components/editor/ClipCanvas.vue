@@ -61,7 +61,7 @@ function draw() {
   if (v && v.readyState >= 2 && v.videoWidth) {
     const vw = v.videoWidth
     const vh = v.videoHeight
-    const layout = d.edit.layout
+    const layout = props.editor.layout.value ?? d.edit.layout
     if (layout.mode === 'fill') {
       const r = fillRect(layout, vw, vh, sourceMs - d.startMs)
       ctx.drawImage(v, r.x, r.y, r.w, r.h, 0, 0, OUT_W, OUT_H)

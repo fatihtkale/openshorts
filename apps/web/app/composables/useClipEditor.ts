@@ -1,9 +1,12 @@
 import {
   effectiveCuts,
+  faceCoverage,
   keptSegments,
   outputDuration,
+  resolveLayout,
   wordsToOutput,
   type ClipEdit,
+  type FaceTrack,
 } from '@clipstudio/captions'
 import type { ClipDto, ProjectDto, RenderDto, Word } from '@clipstudio/core/shared'
 
@@ -153,9 +156,31 @@ export function useClipEditor(id: MaybeRefOrGetter<string>) {
       : [],
   )
 
+  // ── Faces (for "follow faces") ──────────────────────────────────
+  const faceTrack = shallowRef<FaceTrack | null>(null)
+  watch(
+    () => data.value?.project.assets.faces?.updatedAt,
+    async (stamp) => {
+      const projectId = data.value?.project.id
+      if (!stamp || !projectId) return
+      try {
+        faceTrack.value = await $fetch<FaceTrack>(`/api/projects/${projectId}/faces`)
+      } catch {
+        faceTrack.value = null
+      }
+    },
+    { immediate: true },
+  )
+  /** The layout as drawn: with "follow faces" on, its path comes from the face track. */
+  const layout = computed(() => (draft.value ? resolveLayout(draft.value.edit.layout, faceTrack.value, range.value) : null))
+  const coverage = computed(() => (faceTrack.value ? faceCoverage(faceTrack.value, range.value) : null))
+
   return {
     data,
     error,
+    faceTrack,
+    layout,
+    coverage,
     refresh,
     draft,
     version,
