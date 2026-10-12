@@ -4,7 +4,9 @@ import {
   getConfig,
   JobQueue,
   LocalStorage,
+  ModelService,
   ProjectService,
+  TranscriptService,
   setSetting,
   WORKER_HEARTBEAT_KEY,
   type WorkerHeartbeat,
@@ -17,7 +19,9 @@ const db = createDb({ path: config.dbPath, migrationsDir: config.migrationsDir }
 const queue = new JobQueue(db)
 const storage = new LocalStorage(config.storageDir)
 const projects = new ProjectService(db, queue, storage)
-const deps = { projects, storage }
+const transcripts = new TranscriptService(db, queue)
+const models = new ModelService(db, config.modelsDir)
+const deps = { projects, transcripts, models, storage }
 const workerId = `${hostname()}:${process.pid}`
 
 const worker = new Worker({

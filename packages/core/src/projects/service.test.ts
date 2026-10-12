@@ -6,7 +6,8 @@ import { JobQueue } from '../jobs/queue'
 import type { YoutubeMeta } from '../shared/projects'
 import { LocalStorage } from '../storage'
 import { createTestDb } from '../testing'
-import { ProjectError, ProjectService } from './service'
+import { ProjectError } from '../errors'
+import { ProjectService } from './service'
 
 const meta: YoutubeMeta = {
   videoId: 'aqz-KE-bpKQ',

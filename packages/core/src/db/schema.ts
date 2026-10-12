@@ -1,6 +1,7 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { JOB_STATUSES } from '../shared/jobs'
 import { ASSET_KINDS, PROJECT_STATUSES, SOURCE_TYPES, type YoutubeMeta } from '../shared/projects'
+import { TRANSCRIPT_STATUSES, type Word } from '../shared/transcripts'
 
 export const jobs = sqliteTable(
   'jobs',
@@ -85,6 +86,25 @@ export const assets = sqliteTable(
   (t) => [uniqueIndex('assets_project_kind_idx').on(t.projectId, t.kind)],
 )
 
+/** One transcript per project; transcribing again replaces it. */
+export const transcripts = sqliteTable('transcripts', {
+  projectId: text('project_id')
+    .primaryKey()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: TRANSCRIPT_STATUSES }).notNull(),
+  error: text('error'),
+  requestedLanguage: text('requested_language').notNull().default('auto'),
+  language: text('language'),
+  engine: text('engine'),
+  model: text('model'),
+  words: text('words', { mode: 'json' }).$type<Word[]>().notNull(),
+  wordCount: integer('word_count').notNull().default(0),
+  edited: integer('edited', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 export type JobRow = typeof jobs.$inferSelect
 export type ProjectRow = typeof projects.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
+export type TranscriptRow = typeof transcripts.$inferSelect

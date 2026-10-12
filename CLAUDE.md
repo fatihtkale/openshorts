@@ -42,3 +42,16 @@ Run `pnpm test` and `pnpm typecheck` before calling a change done.
 `data/storage/projects/<id>/`: `source.<ext>` (original), `proxy.mp4` (720p H.264 preview, 1 s keyframes),
 `audio.wav` (16 kHz mono, for whisper), `thumbnail.jpg`. Rows in `assets` point at them by storage key.
 Project status: `importing` (download/upload) → `processing` (`media.prepare`) → `ready`, or `failed` with a retry.
+
+Transcripts live in the `transcripts` table (one per project, words as JSON with ms timings and confidence).
+`media.prepare` queues `transcribe` automatically when a model is installed. Whisper models live in `data/models/`
+(`ModelService` decides which one is active); `downloadFile` verifies Hugging Face's SHA-256 and resumes `.partial` files.
+whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention on, so don't add `-dtw`.
+
+## Testing notes
+
+- For speech, make a clip locally: `say -o speech.aiff "…"` plus an ffmpeg test pattern. Big Buck Bunny has no dialogue.
+- Known Whisper quirk: a closing "Thanks for watching." after other speech is dropped (it transcribes fine on its own,
+  and other closing lines come through). Padding and decoder flags (`-mc 0`, `-bs 1`, `-nth`, `-tp`) don't help.
+  A possible fix later: re-transcribe speech the words don't cover (silencedetect gaps), one gap per whisper run.
+- The worker re-checks for orphaned jobs every 15 s, so a killed dev server doesn't leave jobs stuck as running.

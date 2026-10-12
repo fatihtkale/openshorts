@@ -27,6 +27,12 @@ export function thumbnailUrl(p: ProjectDto): string | null {
   return p.sourceMeta?.thumbnailUrl ?? null
 }
 
+const JOB_WORDS: Record<string, [running: string, queued: string]> = {
+  'ingest.download': ['Downloading', 'Waiting to download'],
+  'media.prepare': ['Preparing video', 'Waiting to prepare'],
+  transcribe: ['Transcribing', 'Waiting to transcribe'],
+}
+
 /** What a project is doing right now, combining its status, its active job and any upload in this tab. */
 export function describeProject(p: ProjectDto, job: JobDto | undefined, upload: UploadState | undefined): ProjectActivity {
   if (upload) {
@@ -40,9 +46,9 @@ export function describeProject(p: ProjectDto, job: JobDto | undefined, upload: 
   }
   if (job) {
     const running = job.status === 'running'
-    const verb = job.type === 'ingest.download' ? 'download' : 'prepare'
+    const [doing, waiting] = JOB_WORDS[job.type] ?? ['Working', 'Waiting']
     return {
-      label: running ? (verb === 'download' ? 'Downloading' : 'Preparing video') : `Waiting to ${verb}`,
+      label: running ? doing : waiting,
       detail: running ? job.message : job.error ? `Last try failed: ${job.error}` : null,
       progress: running ? job.progress : null,
       tone: 'primary',

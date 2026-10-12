@@ -1,7 +1,9 @@
-import type { JobPayload, JobRow, JobType, ProjectService, Storage } from '@clipstudio/core'
+import type { JobPayload, JobRow, JobType, ModelService, ProjectService, Storage, TranscriptService } from '@clipstudio/core'
 import { demoCount } from './demo'
 import { createDownloadHandler } from './download'
+import { createModelDownloadHandler } from './models'
 import { createPrepareHandler } from './prepare'
+import { createTranscribeHandler } from './transcribe'
 
 export interface JobContext {
   jobId: string
@@ -24,6 +26,8 @@ export type JobHandlers = { [K in JobType]: JobHandler<K> }
 
 export interface HandlerDeps {
   projects: ProjectService
+  transcripts: TranscriptService
+  models: ModelService
   storage: Storage
 }
 
@@ -32,10 +36,15 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
     'demo.count': demoCount,
     'ingest.download': createDownloadHandler(deps),
     'media.prepare': createPrepareHandler(deps),
+    transcribe: createTranscribeHandler(deps),
+    'models.download': createModelDownloadHandler(deps),
   }
 }
 
 /** Runs when a job stops for good (out of retries, or cancelled), so its project can show what happened. */
-export function createGiveUpHook({ projects }: HandlerDeps) {
-  return (job: JobRow, outcome: 'failed' | 'cancelled') => projects.jobGaveUp(job, outcome)
+export function createGiveUpHook({ projects, transcripts }: HandlerDeps) {
+  return (job: JobRow, outcome: 'failed' | 'cancelled') => {
+    projects.jobGaveUp(job, outcome)
+    transcripts.jobGaveUp(job, outcome)
+  }
 }

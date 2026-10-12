@@ -1,6 +1,7 @@
 // Safe to import from the browser: no Node or database dependencies.
 import { z } from 'zod'
 import { DOWNLOAD_QUALITIES } from './projects'
+import { WHISPER_MODEL_IDS } from './transcripts'
 
 export interface JobDefinition {
   /** Human label shown in the activity tray. */
@@ -38,6 +39,18 @@ export const jobDefinitions = {
     group: 'media',
     maxAttempts: 2,
     payload: z.object({ projectId: z.string() }),
+  },
+  transcribe: {
+    label: 'Transcribe',
+    group: 'transcribe',
+    maxAttempts: 2,
+    payload: z.object({ projectId: z.string(), language: z.string().default('auto') }),
+  },
+  'models.download': {
+    label: 'Download speech model',
+    group: 'download',
+    maxAttempts: 2,
+    payload: z.object({ modelId: z.enum(WHISPER_MODEL_IDS) }),
   },
 } satisfies Record<string, JobDefinition>
 

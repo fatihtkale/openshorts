@@ -11,6 +11,8 @@ export interface WorkerOptions {
   heartbeatMs?: number
   /** A running job whose heartbeat is older than this is treated as orphaned. */
   staleAfterMs?: number
+  /** How often to look for orphaned jobs (left behind by a worker that was killed). */
+  staleCheckMs?: number
   /** Minimum gap between progress writes for one job. */
   progressThrottleMs?: number
   log?: (message: string) => void
@@ -33,6 +35,7 @@ export class Worker {
   private stopping = false
   private pollTimer?: NodeJS.Timeout
   private heartbeatTimer?: NodeJS.Timeout
+  private lastStaleCheck = 0
   private readonly log: (message: string) => void
 
   constructor(private readonly opts: WorkerOptions) {
@@ -44,9 +47,7 @@ export class Worker {
   }
 
   start(): void {
-    const recovered = this.opts.queue.recoverStale(this.opts.staleAfterMs ?? 30_000)
-    if (recovered.length) this.log(`recovered ${recovered.length} orphaned job(s)`)
-    for (const row of recovered) if (row.status === 'failed') this.gaveUp(row, 'failed')
+    this.recoverOrphans()
     this.heartbeatTimer = setInterval(() => this.heartbeat(), this.opts.heartbeatMs ?? 5_000)
     this.poll()
   }
@@ -96,7 +97,22 @@ export class Worker {
     entry.controller.abort()
   }
 
+  /** Jobs still marked running by a worker that died (kill -9, crash) go back to the queue. */
+  private recoverOrphans(): void {
+    this.lastStaleCheck = Date.now()
+    const recovered = this.opts.queue.recoverStale(this.opts.staleAfterMs ?? 30_000)
+    if (recovered.length) this.log(`recovered ${recovered.length} orphaned job(s)`)
+    for (const row of recovered) if (row.status === 'failed') this.gaveUp(row, 'failed')
+  }
+
   private heartbeat(): void {
+    if (Date.now() - this.lastStaleCheck >= (this.opts.staleCheckMs ?? 15_000)) {
+      try {
+        this.recoverOrphans()
+      } catch (error) {
+        this.log(`orphan check failed: ${errorMessage(error)}`)
+      }
+    }
     for (const entry of this.running.values()) {
       try {
         const state = this.opts.queue.heartbeat(entry.job.id, this.opts.workerId)

@@ -1,20 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, desc, eq, getTableColumns, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { assets, projects, type AssetRow, type JobRow, type ProjectRow } from '../db/schema'
+import { ProjectError } from '../errors'
+import { assets, projects, transcripts, type AssetRow, type JobRow, type ProjectRow } from '../db/schema'
 import type { JobQueue } from '../jobs/queue'
 import type { AssetKind, DownloadQuality, ProjectDto, TimeRange, YoutubeMeta } from '../shared/projects'
 import { UPLOAD_EXTENSIONS } from '../shared/projects'
 import type { Storage } from '../storage'
-
-export class ProjectError extends Error {
-  constructor(
-    message: string,
-    readonly code: 'not_found' | 'conflict' | 'invalid',
-  ) {
-    super(message)
-  }
-}
+import type { TranscriptSummary } from '../shared/transcripts'
+import { toTranscriptSummary } from '../transcripts/service'
 
 export function projectPrefix(projectId: string): string {
   return `projects/${projectId}`
@@ -270,11 +264,21 @@ export class ProjectService {
       .from(assets)
       .where(inArray(assets.projectId, rows.map((r) => r.id)))
       .all()
-    return rows.map((row) => toProjectDto(row, all.filter((a) => a.projectId === row.id)))
+    // Everything but the words, which can run to megabytes.
+    const { words: _words, ...summaryColumns } = getTableColumns(transcripts)
+    const summaries = this.db
+      .select(summaryColumns)
+      .from(transcripts)
+      .where(inArray(transcripts.projectId, rows.map((r) => r.id)))
+      .all()
+    return rows.map((row) => {
+      const summary = summaries.find((t) => t.projectId === row.id)
+      return toProjectDto(row, all.filter((a) => a.projectId === row.id), summary ? toTranscriptSummary(summary) : null)
+    })
   }
 }
 
-export function toProjectDto(row: ProjectRow, rowAssets: AssetRow[]): ProjectDto {
+export function toProjectDto(row: ProjectRow, rowAssets: AssetRow[], transcript: TranscriptSummary | null = null): ProjectDto {
   return {
     id: row.id,
     name: row.name,
@@ -290,6 +294,7 @@ export function toProjectDto(row: ProjectRow, rowAssets: AssetRow[]): ProjectDto
     hasAudio: row.hasAudio,
     storageBytes: rowAssets.reduce((sum, a) => sum + a.bytes, 0),
     assets: Object.fromEntries(rowAssets.map((a) => [a.kind, { bytes: a.bytes, updatedAt: a.updatedAt.getTime() }])),
+    transcript,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
     deletedAt: row.deletedAt?.getTime() ?? null,

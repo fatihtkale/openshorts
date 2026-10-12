@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
-import { access, readdir } from 'node:fs/promises'
+import { access } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -115,20 +115,4 @@ async function checkTool(spec: ToolSpec): Promise<ToolStatus> {
 
 export function checkTools(): Promise<ToolStatus[]> {
   return Promise.all(TOOLS.map(checkTool))
-}
-
-export interface ModelStatus {
-  found: boolean
-  files: string[]
-  dir: string
-}
-
-/** whisper.cpp models are `ggml-*.bin` files in the models directory. */
-export async function checkWhisperModels(modelsDir: string): Promise<ModelStatus> {
-  try {
-    const files = (await readdir(modelsDir)).filter((f) => /^ggml-.+\.bin$/.test(f)).sort()
-    return { found: files.length > 0, files, dir: modelsDir }
-  } catch {
-    return { found: false, files: [], dir: modelsDir }
-  }
 }

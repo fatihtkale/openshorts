@@ -28,6 +28,8 @@ function setup(handler: JobHandlers['demo.count'], concurrency = { default: 2 })
       'demo.count': handler,
       'ingest.download': async () => {},
       'media.prepare': async () => {},
+      transcribe: async () => {},
+      'models.download': async () => {},
     },
     workerId: 'test-worker',
     concurrency,

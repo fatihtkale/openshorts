@@ -50,6 +50,32 @@ async function stop() {
   }
 }
 
+// Playback position for the transcript: timeupdate fires ~4×/s, so a frame loop keeps the highlight smooth while playing.
+const video = ref<HTMLVideoElement>()
+const currentMs = ref(0)
+let frame = 0
+function syncTime() {
+  if (video.value) currentMs.value = video.value.currentTime * 1000
+}
+function startTicking() {
+  cancelAnimationFrame(frame)
+  const tick = () => {
+    syncTime()
+    frame = requestAnimationFrame(tick)
+  }
+  tick()
+}
+function stopTicking() {
+  cancelAnimationFrame(frame)
+  syncTime()
+}
+onBeforeUnmount(() => cancelAnimationFrame(frame))
+function seek(ms: number) {
+  if (!video.value) return
+  video.value.currentTime = ms / 1000
+  syncTime()
+}
+
 const vertical = computed(() => !!project.value?.width && !!project.value.height && project.value.height > project.value.width)
 
 const proxyUrl = computed(() =>
@@ -136,11 +162,12 @@ const details = computed(() => {
       </UCard>
 
       <!-- Ready -->
-      <div v-else class="grid gap-6 lg:grid-cols-3">
-        <div class="lg:col-span-2">
+      <div v-else class="grid gap-6 lg:grid-cols-5">
+        <div class="space-y-6 lg:col-span-3">
           <div class="overflow-hidden rounded-lg bg-black">
             <video
               v-if="proxyUrl"
+              ref="video"
               :key="proxyUrl"
               :src="proxyUrl"
               :poster="thumbnailUrl(project) ?? undefined"
@@ -148,12 +175,14 @@ const details = computed(() => {
               preload="metadata"
               class="mx-auto"
               :class="vertical ? 'aspect-[9/16] max-h-[70vh]' : 'aspect-video w-full'"
+              @timeupdate="syncTime"
+              @seeked="syncTime"
+              @play="startTicking"
+              @pause="stopTicking"
             />
           </div>
-        </div>
-        <div class="space-y-6">
           <UCard>
-            <dl class="space-y-3 text-sm">
+            <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
               <div v-for="row in details" :key="row.label" class="flex justify-between gap-4">
                 <dt class="text-muted">{{ row.label }}</dt>
                 <dd class="truncate text-right">
@@ -166,18 +195,16 @@ const details = computed(() => {
             </dl>
           </UCard>
           <UCard>
-            <h2 class="font-semibold">Next</h2>
-            <ul class="mt-3 space-y-3 text-sm">
-              <li class="flex gap-3">
-                <UIcon name="i-lucide-captions" class="mt-0.5 size-4 shrink-0 text-muted" />
-                <span><span class="font-medium">Transcript</span> <span class="text-muted">with word timings, coming in phase 2.</span></span>
-              </li>
-              <li class="flex gap-3">
-                <UIcon name="i-lucide-sparkles" class="mt-0.5 size-4 shrink-0 text-muted" />
-                <span><span class="font-medium">Find clips with Claude</span> <span class="text-muted">coming in phase 3.</span></span>
-              </li>
-            </ul>
+            <div class="flex gap-3 text-sm">
+              <UIcon name="i-lucide-sparkles" class="mt-0.5 size-4 shrink-0 text-muted" />
+              <span><span class="font-medium">Next: find clips with Claude.</span> <span class="text-muted">Coming in phase 3, using this transcript.</span></span>
+            </div>
           </UCard>
+        </div>
+        <div class="lg:col-span-2">
+          <div class="lg:sticky lg:top-0 lg:h-[calc(100dvh-8rem)]">
+            <TranscriptPanel :project="project" :current-ms="currentMs" class="h-[70vh] lg:h-full" @seek="seek" @changed="refresh()" />
+          </div>
         </div>
       </div>
     </div>

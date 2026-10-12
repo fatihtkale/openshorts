@@ -7,7 +7,7 @@ import type { HandlerDeps, JobHandler } from './index'
  * Reads the source's length, size and frame rate, grabs a cover image,
  * and writes a 720p preview plus 16 kHz audio for transcription.
  */
-export function createPrepareHandler({ projects, storage }: HandlerDeps): JobHandler<'media.prepare'> {
+export function createPrepareHandler({ projects, storage, transcripts, models }: HandlerDeps): JobHandler<'media.prepare'> {
   return async ({ projectId }, ctx) => {
     const source = projects.asset(projectId, 'source')
     if (!source) throw new Error('The source video is missing.')
@@ -54,6 +54,9 @@ export function createPrepareHandler({ projects, storage }: HandlerDeps): JobHan
       hasAudio: info.hasAudio,
     })
     ctx.log(`ready (${info.width}x${info.height} @ ${info.fps} fps, encoder ${encoder})`)
+
+    // Transcription starts on its own once a speech model is installed.
+    if (info.hasAudio && models.active() && !transcripts.get(projectId)) transcripts.request(projectId, 'auto')
     return { encoder }
   }
 }

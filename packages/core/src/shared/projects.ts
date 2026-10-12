@@ -1,4 +1,5 @@
 // Safe to import from the browser: no Node or database dependencies.
+import type { TranscriptSummary } from './transcripts'
 
 export const PROJECT_STATUSES = ['importing', 'processing', 'ready', 'failed'] as const
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
@@ -57,6 +58,7 @@ export interface ProjectDto {
   /** Bytes on disk across all of the project's files. */
   storageBytes: number
   assets: Partial<Record<AssetKind, { bytes: number; updatedAt: number }>>
+  transcript: TranscriptSummary | null
   createdAt: number
   updatedAt: number
   deletedAt: number | null

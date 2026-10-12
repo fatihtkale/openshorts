@@ -1,4 +1,14 @@
-import { createDb, getConfig, JobQueue, LocalStorage, ProjectService, type AppConfig, type Db } from '@clipstudio/core'
+import {
+  createDb,
+  getConfig,
+  JobQueue,
+  LocalStorage,
+  ModelService,
+  ProjectService,
+  TranscriptService,
+  type AppConfig,
+  type Db,
+} from '@clipstudio/core'
 
 interface Core {
   config: AppConfig
@@ -6,6 +16,8 @@ interface Core {
   queue: JobQueue
   storage: LocalStorage
   projects: ProjectService
+  transcripts: TranscriptService
+  models: ModelService
 }
 
 // Kept on globalThis so dev-server hot reloads reuse one SQLite connection.
@@ -23,6 +35,8 @@ export function useCore(): Core {
       queue,
       storage,
       projects: new ProjectService(db, queue, storage),
+      transcripts: new TranscriptService(db, queue),
+      models: new ModelService(db, config.modelsDir),
     }
   }
   return holder.__clipstudioCore

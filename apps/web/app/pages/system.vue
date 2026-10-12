@@ -118,23 +118,10 @@ async function startTestJob() {
                 <UButton :label="tool.installHint" icon="i-lucide-copy" color="neutral" variant="outline" size="xs" class="font-mono" @click="copy(tool.installHint)" />
               </template>
             </li>
-            <li class="flex items-center gap-4 px-4 py-3 sm:px-6">
-              <UIcon
-                :name="data.whisperModels.found ? 'i-lucide-circle-check' : 'i-lucide-circle-dashed'"
-                class="size-5 shrink-0"
-                :class="data.whisperModels.found ? 'text-success' : 'text-muted'"
-              />
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-highlighted">Whisper speech model</p>
-                <p class="text-xs text-muted">
-                  {{ data.whisperModels.found ? data.whisperModels.files.join(', ') : 'Downloaded from this page in phase 2 (about 1.6 GB).' }}
-                </p>
-              </div>
-              <UBadge v-if="data.whisperModels.found" label="Ready" color="success" variant="subtle" />
-              <UBadge v-else label="Needed from phase 2" color="neutral" variant="subtle" />
-            </li>
           </ul>
         </UCard>
+
+        <SpeechModels />
 
         <div class="grid gap-6 sm:grid-cols-2">
           <UCard>

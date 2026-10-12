@@ -52,7 +52,7 @@ async function run(action: (id: string) => Promise<void>, failure: string) {
       </div>
       <UProgress v-if="job.status === 'running'" :model-value="percent" size="xs" />
       <p class="text-xs text-muted">{{ subtitle }}</p>
-      <p v-if="job.error && job.status !== 'succeeded'" class="text-xs text-error">{{ job.error }}</p>
+      <p v-if="job.error && (job.status === 'failed' || job.status === 'queued')" class="text-xs text-error">{{ job.error }}</p>
     </div>
     <div class="shrink-0">
       <ConfirmButton
