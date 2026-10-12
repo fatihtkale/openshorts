@@ -46,6 +46,12 @@ export const jobDefinitions = {
     maxAttempts: 2,
     payload: z.object({ projectId: z.string(), language: z.string().default('auto') }),
   },
+  'clip.render': {
+    label: 'Export clip',
+    group: 'render',
+    maxAttempts: 2,
+    payload: z.object({ renderId: z.string() }),
+  },
   'models.download': {
     label: 'Download speech model',
     group: 'download',
@@ -82,6 +88,8 @@ export interface JobDto {
   maxAttempts: number
   cancelRequested: boolean
   projectId: string | null
+  /** The export or model this job works on, if any (from its payload). */
+  subjectId: string | null
   rev: number
   runAt: number
   createdAt: number

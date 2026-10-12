@@ -13,6 +13,8 @@
     "@types/node": "^22.0.0"
   },
   "dependencies": {
-    "@clipstudio/core": "workspace:*"
+    "@clipstudio/core": "workspace:*",
+    "@napi-rs/canvas": "^1.0.11",
+    "@clipstudio/captions": "workspace:*"
   }
 }

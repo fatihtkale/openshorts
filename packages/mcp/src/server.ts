@@ -226,6 +226,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
             endSec: sec(c.endMs),
             lengthSec: sec(c.endMs - c.startMs),
             hook: c.hook,
+            exported: c.render?.status === 'done' ? (c.render.clipVersion === c.version ? 'yes' : 'yes, but edited since') : 'no',
           })),
         )
       }),
@@ -274,6 +275,11 @@ export function createMcpServer(deps: McpDeps): McpServer {
               reason: z.string().max(600).optional().describe('Why this moment works as a short.'),
               score: z.number().min(0).max(100).optional(),
               keywords: z.array(z.string()).max(12).optional().describe('Spoken words to highlight in captions.'),
+              emojis: z
+                .array(z.object({ word: z.string(), emoji: z.string().max(16) }))
+                .max(12)
+                .optional()
+                .describe('Emoji to pop up above spoken words (used by the Emoji caption style). One emoji per word.'),
             }),
           )
           .min(1)
@@ -286,7 +292,12 @@ export function createMcpServer(deps: McpDeps): McpServer {
           projectId,
           note,
           client: deps.client,
-          clips: drafts.map((c) => ({ ...c, startMs: Math.round(c.startSec * 1000), endMs: Math.round(c.endSec * 1000) })),
+          clips: drafts.map((c) => ({
+            ...c,
+            startMs: Math.round(c.startSec * 1000),
+            endMs: Math.round(c.endSec * 1000),
+            emojis: Object.fromEntries((c.emojis ?? []).map((e) => [e.word, e.emoji])),
+          })),
         })
         const lines = [
           `Sent ${proposal.clips.length} clip${proposal.clips.length === 1 ? '' : 's'} to the Inbox: ${inboxUrl}`,

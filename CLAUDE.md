@@ -48,6 +48,18 @@ Transcripts live in the `transcripts` table (one per project, words as JSON with
 (`ModelService` decides which one is active); `downloadFile` verifies Hugging Face's SHA-256 and resumes `.partial` files.
 whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention on, so don't add `-dtw`.
 
+## Editor and export
+
+- `packages/captions` is browser-safe and shared: `drawCaptions`/`drawHook` (engine), presets, layout maths
+  (`fillRect`, `panelRect`), and the cut timeline (`effectiveCuts`, `keptSegments`, `wordsToOutput`).
+  The editor preview (`components/editor/ClipCanvas.vue`) and the exporter (`packages/media/src/render.ts`) both use it.
+- A clip's look is `clips.edit` (a `ClipEdit`, validated by `clipEditSchema`); `clips.version` goes up on every save
+  and each render records the version it shows.
+- Export: ffmpeg cuts/crops/encodes (`select` for cuts, `sendcmd` to move the fill crop, VideoToolbox with x264 fallback);
+  Node draws caption frames with `@napi-rs/canvas` and pipes them in as raw RGBA. ~3× real time on the M1 Pro.
+- Fonts come from Fontsource (woff2): the browser imports their CSS, the exporter registers the same files.
+- `pnpm --filter @clipstudio/worker caption-sheet` draws every preset to `data/dev/caption-sheet.png` for a quick look.
+
 ## Claude / MCP
 
 - `packages/mcp` builds the server (tools + `SERVER_INSTRUCTIONS`, the clip-finding guide every client receives);

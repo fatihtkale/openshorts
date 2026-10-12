@@ -12,7 +12,7 @@ Finding clips
 4. Pick moments that work on their own, with no earlier context: a strong first line (the first 3 seconds decide whether people keep watching), one complete idea, and a payoff at the end. Good: surprising claims, stories, strong opinions, practical tips, emotional or funny moments, quotable lines. Skip: intros, outros, sponsor reads, "as I said earlier", and anything that trails off.
 5. Length: 15–60 s is ideal (hard limits 3–180 s). Start on the first word of a sentence and end right after a sentence ends; the app snaps the edges to word boundaries.
 6. When the picture matters (demos, reactions, on-screen text) or you're unsure, check candidates with get_frames.
-7. Call propose_clips ONCE with all clips, best first. For each: a title (60 characters or fewer, honest), a hook (the on-screen text for the first seconds, 10 words or fewer), the reason it works, a 0–100 score, and 3–6 keywords from the spoken words (used to highlight captions).
+7. Call propose_clips ONCE with all clips, best first. For each: a title (60 characters or fewer, honest), a hook (the on-screen text for the first seconds, 10 words or fewer), the reason it works, a 0–100 score, 3–6 keywords from the spoken words (used to highlight captions), and optionally a few emojis for key spoken words.
 8. Tell the user how many clips you proposed, the best two or three in a line each, and that they're waiting in the Inbox.
 
 Importing videos

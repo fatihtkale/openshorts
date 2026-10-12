@@ -304,6 +304,12 @@ export class JobQueue {
   }
 }
 
+function subjectOf(payload: unknown): string | null {
+  const p = payload as { renderId?: unknown; modelId?: unknown } | null
+  const id = p?.renderId ?? p?.modelId
+  return typeof id === 'string' ? id : null
+}
+
 export function toJobDto(row: JobRow): JobDto {
   return {
     id: row.id,
@@ -317,6 +323,7 @@ export function toJobDto(row: JobRow): JobDto {
     maxAttempts: row.maxAttempts,
     cancelRequested: row.cancelRequested,
     projectId: row.projectId,
+    subjectId: subjectOf(row.payload),
     rev: row.rev,
     runAt: row.runAt.getTime(),
     createdAt: row.createdAt.getTime(),

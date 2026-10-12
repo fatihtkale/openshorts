@@ -1,11 +1,13 @@
 import { hostname } from 'node:os'
 import {
+  ClipService,
   createDb,
   getConfig,
   JobQueue,
   LocalStorage,
   ModelService,
   ProjectService,
+  RenderService,
   TranscriptService,
   setSetting,
   WORKER_HEARTBEAT_KEY,
@@ -21,7 +23,7 @@ const storage = new LocalStorage(config.storageDir)
 const projects = new ProjectService(db, queue, storage)
 const transcripts = new TranscriptService(db, queue)
 const models = new ModelService(db, config.modelsDir)
-const deps = { projects, transcripts, models, storage }
+const deps = { projects, transcripts, models, clips: new ClipService(db), renders: new RenderService(db, queue), storage }
 const workerId = `${hostname()}:${process.pid}`
 
 const worker = new Worker({

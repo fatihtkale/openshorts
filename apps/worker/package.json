@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/index.ts",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "caption-sheet": "tsx src/dev/caption-sheet.ts"
   },
   "dependencies": {
     "@clipstudio/core": "workspace:*",
     "@clipstudio/media": "workspace:*",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "@clipstudio/captions": "workspace:*",
+    "@napi-rs/canvas": "^1.0.11"
   },
   "devDependencies": {
     "@types/node": "^22.0.0"

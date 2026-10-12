@@ -2,7 +2,8 @@ import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-or
 import { JOB_STATUSES } from '../shared/jobs'
 import { ASSET_KINDS, PROJECT_STATUSES, SOURCE_TYPES, type YoutubeMeta } from '../shared/projects'
 import { TRANSCRIPT_STATUSES, type Word } from '../shared/transcripts'
-import { CLIP_ORIGINS, CLIP_STATUSES, PROPOSAL_KINDS, PROPOSAL_STATUSES } from '../shared/clips'
+import type { ClipEdit } from '@clipstudio/captions'
+import { CLIP_ORIGINS, CLIP_STATUSES, PROPOSAL_KINDS, PROPOSAL_STATUSES, RENDER_STATUSES } from '../shared/clips'
 
 export const jobs = sqliteTable(
   'jobs',
@@ -143,10 +144,36 @@ export const clips = sqliteTable(
     keywords: text('keywords', { mode: 'json' }).$type<string[]>().notNull(),
     origin: text('origin', { enum: CLIP_ORIGINS }).notNull(),
     status: text('status', { enum: CLIP_STATUSES }).notNull(),
+    /** Layout, captions, hook and trims. Null until first edited (defaults apply). */
+    edit: text('edit', { mode: 'json' }).$type<ClipEdit>(),
+    version: integer('version').notNull().default(1),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [index('clips_project_idx').on(t.projectId), index('clips_proposal_idx').on(t.proposalId)],
+)
+
+/** An exported MP4 of a clip at a given version. */
+export const renders = sqliteTable(
+  'renders',
+  {
+    id: text('id').primaryKey(),
+    clipId: text('clip_id')
+      .notNull()
+      .references(() => clips.id, { onDelete: 'cascade' }),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: RENDER_STATUSES }).notNull(),
+    clipVersion: integer('clip_version').notNull(),
+    storageKey: text('storage_key'),
+    bytes: integer('bytes'),
+    durationMs: integer('duration_ms'),
+    error: text('error'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('renders_clip_idx').on(t.clipId), index('renders_project_idx').on(t.projectId)],
 )
 
 export type JobRow = typeof jobs.$inferSelect
@@ -155,3 +182,4 @@ export type AssetRow = typeof assets.$inferSelect
 export type TranscriptRow = typeof transcripts.$inferSelect
 export type ClipRow = typeof clips.$inferSelect
 export type ProposalRow = typeof proposals.$inferSelect
+export type RenderRow = typeof renders.$inferSelect

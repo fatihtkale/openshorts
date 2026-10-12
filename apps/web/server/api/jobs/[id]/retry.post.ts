@@ -1,12 +1,13 @@
 import { toJobDto } from '@clipstudio/core'
 
 export default defineEventHandler((event) => {
-  const { queue, projects, transcripts } = useCore()
+  const { queue, projects, transcripts, renders } = useCore()
   const id = getRouterParam(event, 'id')!
   const row = queue.retry(id)
   if (row) {
     projects.jobRetried(row)
     transcripts.jobRetried(row)
+    renders.jobRetried(row)
     return toJobDto(row)
   }
   if (!queue.get(id)) throw createError({ statusCode: 404, statusMessage: 'Job not found' })

@@ -1,18 +1,41 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, eq, inArray, ne } from 'drizzle-orm'
+import { defaultEdit, type ClipEdit } from '@clipstudio/captions'
+import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { clips, projects, transcripts, type ClipRow } from '../db/schema'
+import { clips, projects, renders, transcripts, type ClipRow, type RenderRow } from '../db/schema'
 import { ProjectError } from '../errors'
 import {
   CLIP_MAX_MS,
   CLIP_MIN_MS,
   overlapRatio,
   snapToWords,
+  clipEditSchema,
   type ClipDto,
   type ClipStatus,
+  type RenderDto,
 } from '../shared/clips'
 
-export function toClipDto(row: ClipRow): ClipDto {
+export function toRenderDto(row: RenderRow): RenderDto {
+  return {
+    id: row.id,
+    clipId: row.clipId,
+    projectId: row.projectId,
+    status: row.status,
+    clipVersion: row.clipVersion,
+    durationMs: row.durationMs,
+    bytes: row.bytes,
+    error: row.error,
+    createdAt: row.createdAt.getTime(),
+    finishedAt: row.finishedAt?.getTime() ?? null,
+  }
+}
+
+/** The clip's edit, or the defaults for a clip that was never edited. */
+export function resolveEdit(row: Pick<ClipRow, 'edit' | 'hook'>): ClipEdit {
+  return row.edit ?? defaultEdit({ hook: row.hook })
+}
+
+export function toClipDto(row: ClipRow, render: RenderRow | null = null): ClipDto {
   return {
     id: row.id,
     projectId: row.projectId,
@@ -26,6 +49,9 @@ export function toClipDto(row: ClipRow): ClipDto {
     keywords: row.keywords,
     origin: row.origin,
     status: row.status,
+    edit: resolveEdit(row),
+    version: row.version,
+    render: render ? toRenderDto(render) : null,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
   }
@@ -39,6 +65,8 @@ export interface ClipDraft {
   reason?: string | null
   score?: number | null
   keywords?: string[]
+  /** Word → emoji, for the emoji caption preset. */
+  emojis?: Record<string, string>
 }
 
 export class ClipService {
@@ -48,17 +76,27 @@ export class ClipService {
   ) {}
 
   list(projectId: string, statuses?: ClipStatus[]): ClipDto[] {
-    return this.db
+    const rows = this.db
       .select()
       .from(clips)
       .where(and(eq(clips.projectId, projectId), statuses ? inArray(clips.status, statuses) : undefined))
       .orderBy(asc(clips.startMs))
       .all()
-      .map(toClipDto)
+    const latest = this.latestRenders(rows.map((r) => r.id))
+    return rows.map((r) => toClipDto(r, latest.get(r.id) ?? null))
+  }
+
+  /** The newest render of each clip. */
+  private latestRenders(clipIds: string[]): Map<string, RenderRow> {
+    const out = new Map<string, RenderRow>()
+    if (!clipIds.length) return out
+    const rows = this.db.select().from(renders).where(inArray(renders.clipId, clipIds)).orderBy(desc(renders.createdAt)).all()
+    for (const r of rows) if (!out.has(r.clipId)) out.set(r.clipId, r)
+    return out
   }
 
   forProposal(proposalId: string): ClipDto[] {
-    return this.db.select().from(clips).where(eq(clips.proposalId, proposalId)).orderBy(asc(clips.startMs)).all().map(toClipDto)
+    return this.db.select().from(clips).where(eq(clips.proposalId, proposalId)).orderBy(asc(clips.startMs)).all().map((r) => toClipDto(r))
   }
 
   /**
@@ -88,6 +126,12 @@ export class ClipService {
         reason: draft.reason?.trim().slice(0, 600) || null,
         score: draft.score === null || draft.score === undefined ? null : Math.max(0, Math.min(100, Math.round(draft.score))),
         keywords: (draft.keywords ?? []).map((k) => k.trim()).filter(Boolean).slice(0, 12),
+        emojis: Object.fromEntries(
+          Object.entries(draft.emojis ?? {})
+            .map(([word, emoji]) => [word.toLowerCase().replace(/[^\p{L}\p{N}']+/gu, ''), emoji.trim()] as const)
+            .filter(([word, emoji]) => word && emoji && emoji.length <= 16)
+            .slice(0, 20),
+        ),
       },
     }
   }
@@ -118,6 +162,7 @@ export class ClipService {
         reason: clip.reason ?? null,
         score: clip.score ?? null,
         keywords: clip.keywords ?? [],
+        edit: defaultEdit({ hook: clip.hook, emojis: clip.emojis }),
         origin: extra.origin,
         status: extra.status,
         createdAt: now,
@@ -143,14 +188,52 @@ export class ClipService {
   require(id: string): ClipDto {
     const row = this.db.select().from(clips).where(eq(clips.id, id)).get()
     if (!row) throw new ProjectError('Clip not found', 'not_found')
-    return toClipDto(row)
+    return toClipDto(row, this.latestRenders([id]).get(id) ?? null)
+  }
+
+  /**
+   * Saves editor changes. `expectedVersion` must match the stored version (another tab may have saved first);
+   * the version then goes up by one.
+   */
+  update(id: string, patch: { title?: string; startMs?: number; endMs?: number; edit?: unknown }, expectedVersion: number): ClipDto {
+    const row = this.db.select().from(clips).where(eq(clips.id, id)).get()
+    if (!row) throw new ProjectError('Clip not found', 'not_found')
+    if (row.version !== expectedVersion) {
+      throw new ProjectError('This clip was changed somewhere else. Reload to see the latest version.', 'conflict')
+    }
+    const project = this.db.select().from(projects).where(eq(projects.id, row.projectId)).get()
+    const duration = project?.durationMs ?? 0
+    const startMs = Math.round(patch.startMs ?? row.startMs)
+    const endMs = Math.round(patch.endMs ?? row.endMs)
+    if (startMs < 0 || endMs > duration + 1 || endMs - startMs < CLIP_MIN_MS) {
+      throw new ProjectError(`A clip must be inside the video and at least ${CLIP_MIN_MS / 1000} s long`, 'invalid')
+    }
+    if (endMs - startMs > CLIP_MAX_MS) throw new ProjectError(`A clip can be at most ${CLIP_MAX_MS / 1000} s long`, 'invalid')
+    let edit = row.edit
+    if (patch.edit !== undefined) {
+      const parsed = clipEditSchema.safeParse(patch.edit)
+      if (!parsed.success) throw new ProjectError(`Invalid edit: ${parsed.error.issues[0]?.message ?? 'unknown problem'}`, 'invalid')
+      edit = parsed.data
+    }
+    const title = patch.title === undefined ? row.title : patch.title.trim().slice(0, 120)
+    if (!title) throw new ProjectError('A title is required', 'invalid')
+    this.db
+      .update(clips)
+      .set({ title, startMs, endMs, edit, version: row.version + 1, updatedAt: this.now() })
+      .where(eq(clips.id, id))
+      .run()
+    return this.require(id)
   }
 
   rename(id: string, title: string): ClipDto {
     const trimmed = title.trim()
     if (!trimmed) throw new ProjectError('A title is required', 'invalid')
     this.require(id)
-    this.db.update(clips).set({ title: trimmed.slice(0, 120), updatedAt: this.now() }).where(eq(clips.id, id)).run()
+    this.db
+      .update(clips)
+      .set({ title: trimmed.slice(0, 120), updatedAt: this.now() })
+      .where(eq(clips.id, id))
+      .run()
     return this.require(id)
   }
 }

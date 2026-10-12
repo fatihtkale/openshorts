@@ -1,4 +1,6 @@
 // Safe to import from the browser: no Node or database dependencies.
+import { CAPTION_ANIMATIONS, HOOK_STYLES, LAYOUT_MODES, type ClipEdit } from '@clipstudio/captions'
+import { z } from 'zod'
 import type { DownloadQuality, TimeRange, YoutubeMeta } from './projects'
 import type { Word } from './transcripts'
 
@@ -28,9 +30,84 @@ export interface ClipDto {
   keywords: string[]
   origin: ClipOrigin
   status: ClipStatus
+  /** How the clip looks (layout, captions, hook, trims). Defaults filled in for older clips. */
+  edit: ClipEdit
+  /** Goes up by one on every saved change; exports remember which version they rendered. */
+  version: number
+  /** The newest export, if any. */
+  render: RenderDto | null
   createdAt: number
   updatedAt: number
 }
+
+export const RENDER_STATUSES = ['queued', 'running', 'done', 'failed'] as const
+export type RenderStatus = (typeof RENDER_STATUSES)[number]
+
+export interface RenderDto {
+  id: string
+  clipId: string
+  projectId: string
+  status: RenderStatus
+  /** The clip version this export shows. Older than the clip's version means it's out of date. */
+  clipVersion: number
+  durationMs: number | null
+  bytes: number | null
+  error: string | null
+  createdAt: number
+  finishedAt: number | null
+}
+
+const colour = z.string().regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/)
+const unit = z.number().min(0).max(1)
+const range = z.object({ start: z.number().min(0), end: z.number().min(0) })
+
+/** Validates an edit coming from the browser before it's stored. */
+export const clipEditSchema = z.object({
+  layout: z.object({
+    mode: z.enum(LAYOUT_MODES),
+    zoom: z.number().min(1).max(4),
+    keyframes: z.array(z.object({ t: z.number().min(0), x: unit, y: unit })).min(1).max(500),
+    split: z.object({
+      top: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(4) }),
+      bottom: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(4) }),
+    }),
+  }),
+  captions: z.object({
+    enabled: z.boolean(),
+    preset: z.string().max(40),
+    style: z.object({
+      animation: z.enum(CAPTION_ANIMATIONS),
+      fontFamily: z.string().max(60),
+      fontWeight: z.number().int().min(100).max(900),
+      fontSize: z.number().min(24).max(260),
+      uppercase: z.boolean(),
+      textColor: colour,
+      activeColor: colour,
+      keywordColor: colour,
+      strokeColor: colour,
+      strokeWidth: z.number().min(0).max(40),
+      shadow: z.boolean(),
+      boxColor: colour,
+      y: unit,
+      maxWordsPerLine: z.number().int().min(1).max(10),
+      maxLines: z.number().int().min(1).max(4),
+    }),
+  }),
+  hook: z.object({
+    enabled: z.boolean(),
+    text: z.string().max(160),
+    style: z.enum(HOOK_STYLES),
+    durationMs: z.number().min(500).max(10_000),
+    y: unit,
+  }),
+  trim: z.object({
+    cuts: z.array(range).max(2000),
+    removePauses: z.boolean(),
+    pauseMs: z.number().min(300).max(3000),
+    removeFillers: z.boolean(),
+  }),
+  emojis: z.record(z.string().max(40), z.string().max(16)),
+}) satisfies z.ZodType<ClipEdit>
 
 export const PROPOSAL_KINDS = ['clips', 'import'] as const
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number]

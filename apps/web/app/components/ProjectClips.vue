@@ -15,6 +15,42 @@ const { pending: inboxCount } = useInboxCount()
 watch([version, inboxCount], () => void refresh())
 
 const approved = computed(() => clips.value.filter((c) => c.status === 'approved'))
+const { jobs } = useJobs()
+onJobStatusChange((job) => {
+  if (job.type === 'clip.render' && job.projectId === props.project.id) void refresh()
+})
+
+/** Export state of a clip, as a short label. */
+function exportState(clip: ClipDto): { label: string; tone: 'muted' | 'success' | 'warning' | 'error'; busy: boolean } | null {
+  const r = clip.render
+  if (!r) return null
+  const job = jobs.value.find((j) => j.subjectId === r.id && (j.status === 'queued' || j.status === 'running'))
+  if (job) return { label: job.status === 'running' ? `Exporting ${Math.round(job.progress * 100)}%` : 'Waiting to export', tone: 'muted', busy: true }
+  if (r.status === 'failed') return { label: 'Export failed', tone: 'error', busy: false }
+  if (r.status !== 'done') return { label: 'Waiting to export', tone: 'muted', busy: true }
+  return r.clipVersion < clip.version
+    ? { label: 'Exported (edited since)', tone: 'warning', busy: false }
+    : { label: 'Exported', tone: 'success', busy: false }
+}
+
+const needsExport = computed(() =>
+  approved.value.filter((c) => !c.render || c.render.status === 'failed' || (c.render.status === 'done' && c.render.clipVersion < c.version)),
+)
+const exportAllOpen = ref(false)
+const exporting = ref(false)
+async function exportAll() {
+  exporting.value = true
+  try {
+    const { started } = await $fetch<{ started: number }>(`/api/projects/${props.project.id}/render-all`, { method: 'POST' })
+    toast.add({ title: `${started} ${started === 1 ? 'export' : 'exports'} started`, icon: 'i-lucide-film' })
+    exportAllOpen.value = false
+    await refresh()
+  } catch (e) {
+    toast.add({ title: 'Could not start the exports', description: (e as Error).message, color: 'error' })
+  } finally {
+    exporting.value = false
+  }
+}
 const waiting = computed(() => clips.value.filter((c) => c.status === 'proposed').length)
 
 const { data: mcp } = await useFetch<{ client: string | null; lastSeen: number | null }>('/api/mcp-status', { server: false })
@@ -51,6 +87,16 @@ async function restore(clip: ClipDto) {
       <div class="flex items-center gap-2">
         <h2 class="font-semibold">Clips</h2>
         <span v-if="approved.length" class="text-xs text-muted">{{ approved.length }}</span>
+        <UButton
+          v-if="needsExport.length > 1"
+          :label="`Export all ${needsExport.length}`"
+          icon="i-lucide-film"
+          color="neutral"
+          variant="outline"
+          size="xs"
+          class="ml-auto"
+          @click="exportAllOpen = true"
+        />
       </div>
     </template>
 
@@ -77,9 +123,31 @@ async function restore(clip: ClipDto) {
           <p class="text-xs text-muted tabular-nums">
             {{ formatTimecode(clip.startMs / 1000) }}–{{ formatTimecode(clip.endMs / 1000) }} · {{ formatTimecode((clip.endMs - clip.startMs) / 1000) }}
             · {{ clip.origin === 'claude' ? 'by Claude' : 'made by you' }}
+            <template v-if="exportState(clip)">
+              ·
+              <span
+                :class="{
+                  'text-success': exportState(clip)!.tone === 'success',
+                  'text-warning': exportState(clip)!.tone === 'warning',
+                  'text-error': exportState(clip)!.tone === 'error',
+                }"
+              >{{ exportState(clip)!.label }}</span>
+            </template>
           </p>
         </div>
         <ConfirmButton label="Remove" confirm-label="Remove clip?" class="opacity-0 group-hover:opacity-100 focus:opacity-100" @confirm="remove(clip)" />
+        <UButton
+          v-if="clip.render?.status === 'done'"
+          icon="i-lucide-download"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          :to="`/api/renders/${clip.render.id}/download`"
+          external
+          download
+          aria-label="Download export"
+        />
+        <UButton label="Edit" icon="i-lucide-pencil" color="neutral" variant="outline" size="sm" :to="`/clips/${clip.id}`" />
       </li>
     </ul>
 
@@ -98,4 +166,25 @@ async function restore(clip: ClipDto) {
       </p>
     </div>
   </UCard>
+
+  <UModal
+    v-model:open="exportAllOpen"
+    :title="`Export ${needsExport.length} clips?`"
+    description="Each becomes a vertical 1080×1920 MP4 with its own captions, hook and layout. They're made one at a time on this Mac."
+  >
+    <template #body>
+      <ul class="space-y-1 text-sm">
+        <li v-for="c in needsExport" :key="c.id" class="flex justify-between gap-4">
+          <span class="truncate">{{ c.title }}</span>
+          <span class="shrink-0 text-muted tabular-nums">{{ formatTimecode((c.endMs - c.startMs) / 1000) }}</span>
+        </li>
+      </ul>
+    </template>
+    <template #footer>
+      <div class="flex w-full justify-end gap-2">
+        <UButton label="Cancel" color="neutral" variant="ghost" @click="exportAllOpen = false" />
+        <UButton :label="`Export ${needsExport.length} clips`" icon="i-lucide-film" :loading="exporting" @click="exportAll" />
+      </div>
+    </template>
+  </UModal>
 </template>

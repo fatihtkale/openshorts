@@ -44,6 +44,7 @@ apps/worker     Background process: claims jobs from the queue and runs them
 packages/core   Database (SQLite + Drizzle), job queue, storage, config, shared types
 packages/media  Wrappers around ffmpeg, yt-dlp and whisper.cpp
 packages/mcp    The MCP server Claude connects to (served by the web app at /mcp)
+packages/captions  Caption engine, presets, layouts and the cut timeline; runs in the browser and in the exporter
 data/           (gitignored) the database and all media files
 ```
 

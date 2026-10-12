@@ -7,6 +7,7 @@ import {
   ModelService,
   ProjectService,
   ProposalService,
+  RenderService,
   TranscriptService,
   type AppConfig,
   type Db,
@@ -22,6 +23,7 @@ interface Core {
   models: ModelService
   clips: ClipService
   proposals: ProposalService
+  renders: RenderService
 }
 
 // Kept on globalThis so dev-server hot reloads reuse one SQLite connection.
@@ -45,6 +47,7 @@ export function useCore(): Core {
       models: new ModelService(db, config.modelsDir),
       clips,
       proposals: new ProposalService(db, clips, projects),
+      renders: new RenderService(db, queue),
     }
   }
   return holder.__clipstudioCore
