@@ -1,10 +1,12 @@
 import {
+  ClipService,
   createDb,
   getConfig,
   JobQueue,
   LocalStorage,
   ModelService,
   ProjectService,
+  ProposalService,
   TranscriptService,
   type AppConfig,
   type Db,
@@ -18,6 +20,8 @@ interface Core {
   projects: ProjectService
   transcripts: TranscriptService
   models: ModelService
+  clips: ClipService
+  proposals: ProposalService
 }
 
 // Kept on globalThis so dev-server hot reloads reuse one SQLite connection.
@@ -29,14 +33,18 @@ export function useCore(): Core {
     const db = createDb({ path: config.dbPath, migrationsDir: config.migrationsDir })
     const queue = new JobQueue(db)
     const storage = new LocalStorage(config.storageDir)
+    const projects = new ProjectService(db, queue, storage)
+    const clips = new ClipService(db)
     holder.__clipstudioCore = {
       config,
       db,
       queue,
       storage,
-      projects: new ProjectService(db, queue, storage),
+      projects,
       transcripts: new TranscriptService(db, queue),
       models: new ModelService(db, config.modelsDir),
+      clips,
+      proposals: new ProposalService(db, clips, projects),
     }
   }
   return holder.__clipstudioCore

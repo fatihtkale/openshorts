@@ -143,6 +143,72 @@ async function save() {
 
 const lowConfidenceCount = computed(() => words.value.filter((w) => w.p < LOW_CONFIDENCE).length)
 
+// ── Make a clip from a selection ────────────────────────────────────
+const selection = ref<{ from: number; to: number } | null>(null)
+const clipOpen = ref(false)
+const clipTitle = ref('')
+const savingClip = ref(false)
+const version = useClipsVersion()
+
+function indexOf(node: Node | null): number | null {
+  const el = node instanceof Element ? node : node?.parentElement
+  const word = el?.closest<HTMLElement>('[data-i]')
+  return word ? Number(word.dataset.i) : null
+}
+
+function onMouseUp() {
+  if (editing.value) return
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed || !scroller.value?.contains(sel.anchorNode)) {
+    selection.value = null
+    return
+  }
+  const a = indexOf(sel.anchorNode)
+  const b = indexOf(sel.focusNode)
+  if (a === null || b === null || a === b) {
+    selection.value = null
+    return
+  }
+  selection.value = { from: Math.min(a, b), to: Math.max(a, b) }
+}
+
+const selectionRange = computed(() => {
+  if (!selection.value) return null
+  const start = words.value[selection.value.from]!.start
+  const end = words.value[selection.value.to]!.end
+  return { start, end, length: end - start }
+})
+
+function openClipDialog() {
+  if (!selection.value) return
+  clipTitle.value = words.value
+    .slice(selection.value.from, selection.value.from + 7)
+    .map((w) => w.text)
+    .join(' ')
+    .replace(/[.,!?;:]+$/, '')
+  clipOpen.value = true
+}
+
+async function createClip() {
+  if (!selectionRange.value) return
+  savingClip.value = true
+  try {
+    await $fetch(`/api/projects/${props.project.id}/clips`, {
+      method: 'POST',
+      body: { startMs: selectionRange.value.start, endMs: selectionRange.value.end, title: clipTitle.value },
+    })
+    toast.add({ title: 'Clip added', description: clipTitle.value, icon: 'i-lucide-scissors' })
+    version.value++
+    clipOpen.value = false
+    selection.value = null
+    window.getSelection()?.removeAllRanges()
+  } catch (e) {
+    toast.add({ title: 'Could not make the clip', description: (e as Error).message, color: 'error' })
+  } finally {
+    savingClip.value = false
+  }
+}
+
 // ── Actions ─────────────────────────────────────────────────────────
 const transcribeOpen = ref(false)
 const menu = computed<DropdownMenuItem[][]>(() => [
@@ -260,7 +326,12 @@ function onStarted() {
       </div>
 
       <!-- Words -->
-      <div ref="scroller" class="transcript min-h-0 flex-1 space-y-4 overflow-y-auto p-4 text-[15px] leading-7" :class="{ editing }">
+      <div
+        ref="scroller"
+        class="transcript min-h-0 flex-1 space-y-4 overflow-y-auto p-4 text-[15px] leading-7"
+        :class="{ editing }"
+        @mouseup="onMouseUp"
+      >
         <p v-for="para in paragraphs" :key="para.from" class="flex gap-3">
           <button
             type="button"
@@ -297,6 +368,33 @@ function onStarted() {
         </p>
       </div>
     </template>
+
+    <!-- Selection → clip -->
+    <div v-if="selectionRange && !editing" class="flex items-center gap-3 border-t border-default bg-elevated/60 p-3 sm:px-4">
+      <UIcon name="i-lucide-scissors" class="size-4 shrink-0 text-primary" />
+      <p class="flex-1 text-sm">
+        Selected {{ formatTimecode(selectionRange.start / 1000) }}–{{ formatTimecode(selectionRange.end / 1000) }}
+        <span class="text-muted">({{ Math.round(selectionRange.length / 1000) }} s)</span>
+      </p>
+      <UButton label="Make a clip" size="sm" @click="openClipDialog" />
+      <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" aria-label="Clear selection" @click="selection = null" />
+    </div>
+
+    <UModal v-model:open="clipOpen" title="Make a clip" :description="selectionRange ? `${formatTimecode(selectionRange.start / 1000)}–${formatTimecode(selectionRange.end / 1000)}, ${Math.round(selectionRange.length / 1000)} seconds. The edges snap to whole words.` : undefined">
+      <template #body>
+        <form id="make-clip" @submit.prevent="createClip">
+          <UFormField label="Title">
+            <UInput v-model="clipTitle" autofocus class="w-full" />
+          </UFormField>
+        </form>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton label="Cancel" color="neutral" variant="ghost" @click="clipOpen = false" />
+          <UButton label="Add clip" type="submit" form="make-clip" :loading="savingClip" :disabled="!clipTitle.trim()" />
+        </div>
+      </template>
+    </UModal>
 
     <TranscribeModal v-model:open="transcribeOpen" :project="project" :model-label="activeModel?.label ?? null" @started="onStarted" />
   </UCard>

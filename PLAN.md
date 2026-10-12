@@ -339,7 +339,7 @@ settings        key, value(json)      -- defaults: timezone, window, spread mode
 | 0 ✅ | **Foundation**: workspace, Nuxt + Tailwind + Nuxt UI shell, Drizzle/SQLite, storage, job queue + worker, SSE progress, System check page | `pnpm dev` runs; a dummy job shows live progress in the tray |
 | 1 ✅ | **Projects & ingest**: upload + YouTube link (preview → confirm → download), probe, proxy, thumbnail | Paste a link and get a playable project |
 | 2 ✅ | **Transcription**: whisper.cpp, transcript view/edit (speaker labels moved to later) | Word-level transcript of a 1 h video |
-| 3 | **MCP + Inbox**: MCP server, read tools, `propose_clips`, Inbox, clip review screen, Claude skills | "Claude, find clips in my latest project" → approve them in the app |
+| 3 ✅ | **MCP + Inbox**: MCP server, read tools, `propose_clips` + `propose_import`, Inbox, clip review, manual clips (guide ships as MCP server instructions instead of skills; local Host/Origin checks instead of a token) | "Claude, find clips in my latest project" → approve them in the app |
 | 4 | **Editor & render**: text trimming, Fill/Fit layouts, caption engine + 8 presets, hook, export (spike first) | Downloadable captioned 9:16 MP4 that matches the preview |
 | 4b | **Auto-reframe**: face tracking, smoothed crop path, scene-cut aware | Talking-head video stays framed without manual keys |
 | 5 | **Accounts & publishing**: YouTube + TikTok OAuth, single post with a confirm screen, TikTok draft mode. **Then submit both audits** | A clip posted (private/draft) from the app |

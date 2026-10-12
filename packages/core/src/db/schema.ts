@@ -2,6 +2,7 @@ import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-or
 import { JOB_STATUSES } from '../shared/jobs'
 import { ASSET_KINDS, PROJECT_STATUSES, SOURCE_TYPES, type YoutubeMeta } from '../shared/projects'
 import { TRANSCRIPT_STATUSES, type Word } from '../shared/transcripts'
+import { CLIP_ORIGINS, CLIP_STATUSES, PROPOSAL_KINDS, PROPOSAL_STATUSES } from '../shared/clips'
 
 export const jobs = sqliteTable(
   'jobs',
@@ -104,7 +105,53 @@ export const transcripts = sqliteTable('transcripts', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 })
 
+/** Something Claude (or another MCP client) suggested; nothing happens until the user decides in the Inbox. */
+export const proposals = sqliteTable(
+  'proposals',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind', { enum: PROPOSAL_KINDS }).notNull(),
+    status: text('status', { enum: PROPOSAL_STATUSES }).notNull(),
+    title: text('title').notNull(),
+    note: text('note'),
+    client: text('client'),
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    /** Kind-specific details, e.g. the link and quality for an import. */
+    payload: text('payload', { mode: 'json' }).$type<unknown>(),
+    resultProjectId: text('result_project_id'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    decidedAt: integer('decided_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('proposals_status_idx').on(t.status)],
+)
+
+export const clips = sqliteTable(
+  'clips',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    proposalId: text('proposal_id').references(() => proposals.id, { onDelete: 'set null' }),
+    startMs: integer('start_ms').notNull(),
+    endMs: integer('end_ms').notNull(),
+    title: text('title').notNull(),
+    hook: text('hook'),
+    reason: text('reason'),
+    score: integer('score'),
+    keywords: text('keywords', { mode: 'json' }).$type<string[]>().notNull(),
+    origin: text('origin', { enum: CLIP_ORIGINS }).notNull(),
+    status: text('status', { enum: CLIP_STATUSES }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('clips_project_idx').on(t.projectId), index('clips_proposal_idx').on(t.proposalId)],
+)
+
 export type JobRow = typeof jobs.$inferSelect
 export type ProjectRow = typeof projects.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
 export type TranscriptRow = typeof transcripts.$inferSelect
+export type ClipRow = typeof clips.$inferSelect
+export type ProposalRow = typeof proposals.$inferSelect

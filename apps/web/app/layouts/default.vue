@@ -3,19 +3,27 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 
 const soon = { label: 'Soon', variant: 'subtle' as const, color: 'neutral' as const, size: 'sm' as const }
 
-const items: NavigationMenuItem[][] = [
+const { pending } = useInboxCount()
+onMounted(startInboxPolling)
+
+const items = computed<NavigationMenuItem[][]>(() => [
   [
     { label: 'Projects', icon: 'i-lucide-folder-open', to: '/' },
-    { label: 'Inbox', icon: 'i-lucide-inbox', disabled: true, badge: soon },
+    {
+      label: 'Inbox',
+      icon: 'i-lucide-inbox',
+      to: '/inbox',
+      badge: pending.value ? { label: String(pending.value), color: 'primary' as const, variant: 'solid' as const, size: 'sm' as const } : undefined,
+    },
     { label: 'Calendar', icon: 'i-lucide-calendar-days', disabled: true, badge: soon },
     { label: 'Accounts', icon: 'i-lucide-at-sign', disabled: true, badge: soon },
     { label: 'Trash', icon: 'i-lucide-trash-2', to: '/trash' },
   ],
   [
     { label: 'System check', icon: 'i-lucide-activity', to: '/system' },
-    { label: 'Settings', icon: 'i-lucide-settings', disabled: true, badge: soon },
+    { label: 'Settings', icon: 'i-lucide-settings', to: '/settings' },
   ],
-]
+])
 </script>
 
 <template>

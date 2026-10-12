@@ -19,6 +19,13 @@ pnpm dev
 Open http://127.0.0.1:3000 and go to **System check**. It shows what's installed and has a test job
 for checking that the background worker runs.
 
+## Connect Claude
+
+With `pnpm dev` running, open Claude Code in this folder: `.mcp.json` points it at `http://127.0.0.1:3000/mcp`
+(approve "clipstudio" when asked). Settings → Connect Claude in the app has the command for other folders and
+the config for Claude Desktop. Then ask: "Find the best clips in my latest Clip Studio project".
+Claude can read everything and propose clips or imports; you approve them in the Inbox.
+
 ## Commands
 
 | Command | What it does |
@@ -36,6 +43,7 @@ apps/web        Nuxt 4 app: pages, components, server API (thin; calls packages/
 apps/worker     Background process: claims jobs from the queue and runs them
 packages/core   Database (SQLite + Drizzle), job queue, storage, config, shared types
 packages/media  Wrappers around ffmpeg, yt-dlp and whisper.cpp
+packages/mcp    The MCP server Claude connects to (served by the web app at /mcp)
 data/           (gitignored) the database and all media files
 ```
 

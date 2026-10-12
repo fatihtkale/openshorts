@@ -48,6 +48,15 @@ Transcripts live in the `transcripts` table (one per project, words as JSON with
 (`ModelService` decides which one is active); `downloadFile` verifies Hugging Face's SHA-256 and resumes `.partial` files.
 whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention on, so don't add `-dtw`.
 
+## Claude / MCP
+
+- `packages/mcp` builds the server (tools + `SERVER_INSTRUCTIONS`, the clip-finding guide every client receives);
+  `apps/web/server/routes/mcp.ts` serves it stateless at `/mcp` (one server per request, JSON responses).
+- Tools either read or create a proposal (`ProposalService`). There is no approve tool: decisions only happen in the Inbox UI.
+- `server/middleware/00.security.ts` rejects unknown Host headers (DNS rebinding) and cross-site Origins on mutating
+  `/api` and `/mcp` requests. There is no MCP token; the app binds to 127.0.0.1. `ALLOWED_HOSTS` adds hosts if ever needed.
+- Test the endpoint with curl: POST JSON-RPC with `accept: application/json, text/event-stream`.
+
 ## Testing notes
 
 - For speech, make a clip locally: `say -o speech.aiff "…"` plus an ffmpeg test pattern. Big Buck Bunny has no dialogue.

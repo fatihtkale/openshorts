@@ -72,9 +72,26 @@ function stopTicking() {
 onBeforeUnmount(() => cancelAnimationFrame(frame))
 function seek(ms: number) {
   if (!video.value) return
+  stopAtMs = null
   video.value.currentTime = ms / 1000
   syncTime()
 }
+
+// Playing a clip: start at its first word and pause at its end.
+let stopAtMs: number | null = null
+function playRange(startMs: number, endMs: number) {
+  if (!video.value) return
+  video.value.currentTime = startMs / 1000
+  stopAtMs = endMs
+  void video.value.play()
+  video.value.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+}
+watch(currentMs, (ms) => {
+  if (stopAtMs !== null && ms >= stopAtMs) {
+    stopAtMs = null
+    video.value?.pause()
+  }
+})
 
 const vertical = computed(() => !!project.value?.width && !!project.value.height && project.value.height > project.value.width)
 
@@ -181,6 +198,7 @@ const details = computed(() => {
               @pause="stopTicking"
             />
           </div>
+          <ProjectClips :project="project" @play="playRange" />
           <UCard>
             <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
               <div v-for="row in details" :key="row.label" class="flex justify-between gap-4">
@@ -193,12 +211,6 @@ const details = computed(() => {
                 </dd>
               </div>
             </dl>
-          </UCard>
-          <UCard>
-            <div class="flex gap-3 text-sm">
-              <UIcon name="i-lucide-sparkles" class="mt-0.5 size-4 shrink-0 text-muted" />
-              <span><span class="font-medium">Next: find clips with Claude.</span> <span class="text-muted">Coming in phase 3, using this transcript.</span></span>
-            </div>
           </UCard>
         </div>
         <div class="lg:col-span-2">

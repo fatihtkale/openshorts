@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 
 /** Streams a stored file, honouring Range requests so video players can seek. */
-export async function sendStoredFile(event: H3Event, key: string, contentType: string) {
+export async function sendStoredFile(event: H3Event, key: string, contentType: string, cacheControl = 'private, no-cache') {
   const { storage } = useCore()
   const stat = await storage.stat(key)
   if (!stat) throw createError({ statusCode: 404, statusMessage: 'File not found' })
@@ -9,7 +9,7 @@ export async function sendStoredFile(event: H3Event, key: string, contentType: s
   setResponseHeaders(event, {
     'Content-Type': contentType,
     'Accept-Ranges': 'bytes',
-    'Cache-Control': 'private, no-cache',
+    'Cache-Control': cacheControl,
     'Last-Modified': stat.modifiedAt.toUTCString(),
   })
 

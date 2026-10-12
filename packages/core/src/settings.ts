@@ -25,3 +25,6 @@ export interface WorkerHeartbeat {
   running: number
   concurrency: Record<string, number>
 }
+
+/** The MCP client that last talked to the app: `{ name, lastSeen }`. */
+export const MCP_CLIENT_KEY = 'mcp.client'
