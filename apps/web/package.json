@@ -28,7 +28,9 @@
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@fontsource/montserrat": "^5.3.0",
-    "@fontsource/poppins": "^5.3.0"
+    "@fontsource/poppins": "^5.3.0",
+    "@clipstudio/social": "workspace:*",
+    "@iconify-json/simple-icons": "^1.2.100"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

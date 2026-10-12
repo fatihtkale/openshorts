@@ -32,6 +32,9 @@ importers:
       '@clipstudio/media':
         specifier: workspace:*
         version: link:../../packages/media
+      '@clipstudio/social':
+        specifier: workspace:*
+        version: link:../../packages/social
       '@fontsource/anton':
         specifier: ^5.3.0
         version: 5.3.0
@@ -53,6 +56,9 @@ importers:
       '@iconify-json/lucide':
         specifier: ^1.2.143
         version: 1.2.143
+      '@iconify-json/simple-icons':
+        specifier: ^1.2.100
+        version: 1.2.100
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
         version: 1.32.1(zod@4.6.7)
@@ -93,6 +99,9 @@ importers:
       '@clipstudio/media':
         specifier: workspace:*
         version: link:../../packages/media
+      '@clipstudio/social':
+        specifier: workspace:*
+        version: link:../../packages/social
       '@napi-rs/canvas':
         specifier: ^1.0.11
         version: 1.0.11
@@ -183,6 +192,16 @@ importers:
       onnxruntime-node:
         specifier: 1.30.0
         version: 1.30.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+
+  packages/social:
+    dependencies:
+      '@clipstudio/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -1009,6 +1028,9 @@ packages:
 
   '@iconify-json/lucide@1.2.143':
     resolution: {integrity: sha512-YSggiBVmSY5IvLoKS5pUBoNYkon5g5bac0/JvYCIaFbhTfsTfkIHG2nCXWSk03tu5C4IEmyZ4qwfwbO9CXqLag==}
+
+  '@iconify-json/simple-icons@1.2.100':
+    resolution: {integrity: sha512-536pN2RCEQyy5bYwzayrs4e9egr8cmtVcbdSHLaQl/ULUsihzn1eZ0+Hhn50zgz9cbEotiynKsKQSEjFJ7qKmw==}
 
   '@iconify/collections@1.0.750':
     resolution: {integrity: sha512-dsjsQLm/rHsAxxMg0AFHqqCBLoYPJhqclRmB0qzlfHG2ahnipentuPW/auVwIDtvHPL9lAYTDZ9HPRFS9wkgQg==}
@@ -5987,6 +6009,10 @@ snapshots:
       hono: 4.13.13
 
   '@iconify-json/lucide@1.2.143':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify-json/simple-icons@1.2.100':
     dependencies:
       '@iconify/types': 2.0.0
 

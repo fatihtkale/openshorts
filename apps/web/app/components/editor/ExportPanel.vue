@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { presetById } from '@clipstudio/captions'
-import { formatTimecode, type RenderDto } from '@clipstudio/core/shared'
+import { formatTimecode, PLATFORM_LABELS, type PostDto, type RenderDto } from '@clipstudio/core/shared'
 import type { ClipEditor } from '~/composables/useClipEditor'
 
 const props = defineProps<{ editor: ClipEditor }>()
@@ -53,6 +53,30 @@ async function start() {
 }
 
 const playing = ref<string | null>(null)
+
+// ── Posting ──────────────────────────────────────────────────────────
+const { data: posts, refresh: refreshPosts } = await useFetch<PostDto[]>(() => `/api/clips/${data.value.clip.id}/posts`, {
+  default: () => [],
+  server: false,
+})
+onJobStatusChange((job) => {
+  if (job.type === 'post.publish' && job.projectId === data.value.project.id) void refreshPosts()
+})
+const postRender = ref<RenderDto | null>(null)
+const postOpen = computed({ get: () => !!postRender.value, set: (v) => !v && (postRender.value = null) })
+
+const postLabels: Record<PostDto['status'], string> = {
+  queued: 'Waiting to post',
+  uploading: 'Uploading',
+  processing: 'Processing on the platform',
+  published: 'Posted',
+  scheduled: 'Scheduled',
+  sent_to_inbox: 'In your TikTok drafts',
+  failed: 'Failed',
+}
+function postJob(p: PostDto) {
+  return jobs.value.find((j) => j.subjectId === p.id && (j.status === 'queued' || j.status === 'running'))
+}
 </script>
 
 <template>
@@ -69,13 +93,13 @@ const playing = ref<string | null>(null)
       <p class="text-sm font-medium">Exports</p>
       <ul class="divide-y divide-default rounded-lg border border-default">
         <li v-for="r in renders" :key="r.id" class="space-y-2 p-3">
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-3">
             <UIcon
               :name="r.status === 'done' ? 'i-lucide-circle-check' : r.status === 'failed' ? 'i-lucide-circle-x' : 'i-lucide-loader-circle'"
               class="size-5 shrink-0"
               :class="{ 'text-success': r.status === 'done', 'text-error': r.status === 'failed', 'animate-spin text-primary': r.status === 'queued' || r.status === 'running' }"
             />
-            <div class="min-w-0 flex-1 text-sm">
+            <div class="min-w-[9rem] flex-1 text-sm">
               <p>
                 {{ r.status === 'done' ? `${formatTimecode((r.durationMs ?? 0) / 1000)} · ${formatBytes(r.bytes ?? 0)}` : r.status === 'failed' ? 'Failed' : jobFor(r)?.status === 'running' ? `Exporting… ${Math.round((jobFor(r)?.progress ?? 0) * 100)}%` : 'Waiting to export' }}
                 <UBadge v-if="r.clipVersion !== editor.version.value && r.status === 'done'" label="Older edit" color="neutral" variant="subtle" size="sm" class="ml-1" />
@@ -84,7 +108,8 @@ const playing = ref<string | null>(null)
             </div>
             <template v-if="r.status === 'done'">
               <UButton icon="i-lucide-play" color="neutral" variant="ghost" size="sm" aria-label="Play export" @click="playing = playing === r.id ? null : r.id" />
-              <UButton label="Download" icon="i-lucide-download" size="sm" :to="`/api/renders/${r.id}/download`" external download />
+              <UButton icon="i-lucide-download" color="neutral" variant="ghost" size="sm" :to="`/api/renders/${r.id}/download`" external download aria-label="Download" />
+              <UButton label="Post" icon="i-lucide-send" size="sm" @click="postRender = r" />
             </template>
             <ConfirmButton v-else-if="jobFor(r)" label="Stop" confirm-label="Stop export?" @confirm="cancel(jobFor(r)!.id)" />
           </div>
@@ -93,6 +118,34 @@ const playing = ref<string | null>(null)
         </li>
       </ul>
     </div>
+
+    <div v-if="posts.length" class="space-y-2">
+      <p class="text-sm font-medium">Posts</p>
+      <ul class="divide-y divide-default rounded-lg border border-default">
+        <li v-for="p in posts" :key="p.id" class="space-y-1.5 p-3 text-sm">
+          <div class="flex items-center gap-3">
+            <UIcon :name="p.platform === 'youtube' ? 'i-simple-icons-youtube' : 'i-simple-icons-tiktok'" class="size-4 shrink-0" />
+            <p class="min-w-0 flex-1 truncate">{{ p.title || PLATFORM_LABELS[p.platform] }}</p>
+            <UBadge
+              :label="postLabels[p.status]"
+              :color="p.status === 'failed' ? 'error' : p.status === 'published' || p.status === 'scheduled' ? 'success' : 'neutral'"
+              variant="subtle"
+              size="sm"
+            />
+            <ULink v-if="p.url" :to="p.url" target="_blank" class="inline-flex items-center gap-1 text-xs text-primary">
+              Open <UIcon name="i-lucide-external-link" class="size-3" />
+            </ULink>
+          </div>
+          <UProgress v-if="postJob(p)?.status === 'running'" :model-value="Math.round((postJob(p)?.progress ?? 0) * 100)" size="xs" />
+          <p class="text-xs text-muted">
+            {{ postJob(p)?.message ?? timeAgo(p.publishedAt ?? p.createdAt, now) }}
+            <span v-if="p.error" class="text-error"> · {{ p.error }}</span>
+          </p>
+        </li>
+      </ul>
+    </div>
+
+    <EditorPostModal v-if="postRender" v-model:open="postOpen" :clip="data.clip" :render="postRender" @posted="refreshPosts()" />
 
     <UModal v-model:open="confirmOpen" title="Export this clip?" description="It's rendered on this Mac; you can keep editing while it runs.">
       <template #body>

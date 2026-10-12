@@ -1,11 +1,15 @@
 import { hostname } from 'node:os'
+import { socialApps } from '@clipstudio/social'
 import {
+  AccountService,
   ClipService,
   createDb,
   getConfig,
   JobQueue,
+  loadSecretKey,
   LocalStorage,
   ModelService,
+  PostService,
   ProjectService,
   RenderService,
   TranscriptService,
@@ -23,7 +27,17 @@ const storage = new LocalStorage(config.storageDir)
 const projects = new ProjectService(db, queue, storage)
 const transcripts = new TranscriptService(db, queue)
 const models = new ModelService(db, config.modelsDir)
-const deps = { projects, transcripts, models, clips: new ClipService(db), renders: new RenderService(db, queue), storage }
+const deps = {
+  projects,
+  transcripts,
+  models,
+  clips: new ClipService(db),
+  renders: new RenderService(db, queue),
+  posts: new PostService(db, queue),
+  accounts: new AccountService(db, loadSecretKey(config.dataDir)),
+  socialApps: socialApps(config),
+  storage,
+}
 const workerId = `${hostname()}:${process.pid}`
 
 const worker = new Worker({

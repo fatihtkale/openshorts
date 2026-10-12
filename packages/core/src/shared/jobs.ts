@@ -58,6 +58,12 @@ export const jobDefinitions = {
     maxAttempts: 2,
     payload: z.object({ renderId: z.string() }),
   },
+  'post.publish': {
+    label: 'Post video',
+    group: 'upload',
+    maxAttempts: 3,
+    payload: z.object({ postId: z.string() }),
+  },
   'models.download': {
     label: 'Download speech model',
     group: 'download',

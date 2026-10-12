@@ -1,9 +1,12 @@
+import type { SocialApps } from '@clipstudio/social'
 import type {
+  AccountService,
   ClipService,
   JobPayload,
   JobRow,
   JobType,
   ModelService,
+  PostService,
   ProjectService,
   RenderService,
   Storage,
@@ -14,6 +17,7 @@ import { createDownloadHandler } from './download'
 import { createFacesHandler } from './faces'
 import { createModelDownloadHandler } from './models'
 import { createPrepareHandler } from './prepare'
+import { createPublishHandler } from './publish'
 import { createRenderHandler } from './render'
 import { createTranscribeHandler } from './transcribe'
 
@@ -42,6 +46,9 @@ export interface HandlerDeps {
   models: ModelService
   clips: ClipService
   renders: RenderService
+  posts: PostService
+  accounts: AccountService
+  socialApps: SocialApps
   storage: Storage
 }
 
@@ -54,14 +61,16 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
     transcribe: createTranscribeHandler(deps),
     'models.download': createModelDownloadHandler(deps),
     'clip.render': createRenderHandler(deps),
+    'post.publish': createPublishHandler(deps),
   }
 }
 
 /** Runs when a job stops for good (out of retries, or cancelled), so its project can show what happened. */
-export function createGiveUpHook({ projects, transcripts, renders }: HandlerDeps) {
+export function createGiveUpHook({ projects, transcripts, renders, posts }: HandlerDeps) {
   return (job: JobRow, outcome: 'failed' | 'cancelled') => {
     projects.jobGaveUp(job, outcome)
     transcripts.jobGaveUp(job, outcome)
     renders.jobGaveUp(job, outcome)
+    posts.jobGaveUp(job, outcome)
   }
 }

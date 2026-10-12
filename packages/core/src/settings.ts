@@ -15,6 +15,10 @@ export function setSetting(db: Db, key: string, value: unknown): void {
     .run()
 }
 
+export function deleteSetting(db: Db, key: string): void {
+  db.delete(settings).where(eq(settings.key, key)).run()
+}
+
 /** Written by the worker every few seconds so the app can tell whether it is running. */
 export const WORKER_HEARTBEAT_KEY = 'worker.heartbeat'
 

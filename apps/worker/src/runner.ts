@@ -173,7 +173,9 @@ export class Worker {
     } catch (error) {
       if (controller.signal.aborted) this.settleAborted(entry)
       else {
-        const row = queue.fail(job.id, workerId, errorMessage(error))
+        // Errors marked `retryable: false` (or `permanent`) fail straight away: retrying can't help, and for posts could duplicate them.
+        const permanent = (error as { permanent?: boolean; retryable?: boolean }).permanent === true || (error as { retryable?: boolean }).retryable === false
+        const row = queue.fail(job.id, workerId, errorMessage(error), { permanent })
         this.log(`failed ${job.type} ${job.id.slice(0, 8)}: ${errorMessage(error)}`)
         if (row?.status === 'failed') this.gaveUp(row, 'failed')
       }

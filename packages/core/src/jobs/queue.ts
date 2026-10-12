@@ -139,10 +139,14 @@ export class JobQueue {
     )
   }
 
-  /** Fails the current attempt: requeues with backoff while attempts remain, otherwise marks it failed. */
-  fail(id: string, workerId: string, error: string): JobRow | null {
+  /**
+   * Fails the current attempt: requeues with backoff while attempts remain, otherwise marks it failed.
+   * `permanent` skips the retries (for errors another try can't fix, like a refused permission).
+   */
+  fail(id: string, workerId: string, error: string, opts: { permanent?: boolean } = {}): JobRow | null {
     const row = this.db.select().from(jobs).where(this.heldBy(id, workerId)).get()
-    return row ? this.failRow(row, error) : null
+    if (!row) return null
+    return this.failRow(opts.permanent ? { ...row, attempts: row.maxAttempts } : row, error)
   }
 
   cancelled(id: string, workerId: string): JobRow | null {

@@ -9,6 +9,5 @@ export function allowedHosts(): string[] {
 }
 
 export function appUrl(): string {
-  const { config } = useCore()
-  return process.env.APP_URL ?? `http://127.0.0.1:${config.port}`
+  return useCore().config.appUrl
 }

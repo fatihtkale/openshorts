@@ -10,6 +10,13 @@ export interface AppConfig {
   migrationsDir: string
   host: string
   port: number
+  /** Where the app is reached, for OAuth redirects and links. */
+  appUrl: string
+  /** Platform app credentials from .env; null when not set up. */
+  social: {
+    youtube: { clientId: string; clientSecret: string } | null
+    tiktok: { clientId: string; clientSecret: string } | null
+  }
   /** Max jobs running at once per concurrency group. Unlisted groups use `default`. */
   concurrency: Record<string, number>
 }
@@ -19,6 +26,7 @@ const DEFAULT_CONCURRENCY: Record<string, number> = {
   default: 2,
   download: 2,
   media: 1,
+  upload: 1,
   transcribe: 1,
   render: 1,
 }
@@ -68,6 +76,17 @@ export function getConfig(): AppConfig {
     migrationsDir: resolve(rootDir, 'packages/core/drizzle'),
     host: process.env.HOST ?? '127.0.0.1',
     port: Number(process.env.PORT ?? 3000),
+    appUrl: process.env.APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3000}`,
+    social: {
+      youtube:
+        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+          ? { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET }
+          : null,
+      tiktok:
+        process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET
+          ? { clientId: process.env.TIKTOK_CLIENT_KEY, clientSecret: process.env.TIKTOK_CLIENT_SECRET }
+          : null,
+    },
     concurrency: readConcurrency(),
   }
   return cached

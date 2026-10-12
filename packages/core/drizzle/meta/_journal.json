@@ -36,6 +36,13 @@
       "when": 1791839280044,
       "tag": "0004_clip_edits_and_renders",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791845277380,
+      "tag": "0005_accounts_and_posts",
+      "breakpoints": true
     }
   ]
 }

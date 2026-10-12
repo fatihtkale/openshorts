@@ -16,7 +16,7 @@ const items = computed<NavigationMenuItem[][]>(() => [
       badge: pending.value ? { label: String(pending.value), color: 'primary' as const, variant: 'solid' as const, size: 'sm' as const } : undefined,
     },
     { label: 'Calendar', icon: 'i-lucide-calendar-days', disabled: true, badge: soon },
-    { label: 'Accounts', icon: 'i-lucide-at-sign', disabled: true, badge: soon },
+    { label: 'Accounts', icon: 'i-lucide-at-sign', to: '/accounts' },
     { label: 'Trash', icon: 'i-lucide-trash-2', to: '/trash' },
   ],
   [

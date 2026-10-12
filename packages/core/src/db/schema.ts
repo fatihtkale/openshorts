@@ -2,6 +2,7 @@ import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-or
 import { JOB_STATUSES } from '../shared/jobs'
 import { ASSET_KINDS, PROJECT_STATUSES, SOURCE_TYPES, type YoutubeMeta } from '../shared/projects'
 import { TRANSCRIPT_STATUSES, type Word } from '../shared/transcripts'
+import { PLATFORMS, POST_STATUSES, type TiktokPostOptions, type YoutubePostOptions } from '../shared/social'
 import type { ClipEdit } from '@clipstudio/captions'
 import { CLIP_ORIGINS, CLIP_STATUSES, PROPOSAL_KINDS, PROPOSAL_STATUSES, RENDER_STATUSES } from '../shared/clips'
 
@@ -176,6 +177,56 @@ export const renders = sqliteTable(
   (t) => [index('renders_clip_idx').on(t.clipId), index('renders_project_idx').on(t.projectId)],
 )
 
+/** A connected YouTube channel or TikTok account. Tokens are encrypted (see crypto.ts). */
+export const accounts = sqliteTable(
+  'accounts',
+  {
+    id: text('id').primaryKey(),
+    platform: text('platform', { enum: PLATFORMS }).notNull(),
+    externalId: text('external_id').notNull(),
+    displayName: text('display_name').notNull(),
+    username: text('username'),
+    avatarUrl: text('avatar_url'),
+    tokens: text('tokens').notNull(),
+    status: text('status', { enum: ['connected', 'needs_reconnect'] }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [uniqueIndex('accounts_platform_external_idx').on(t.platform, t.externalId)],
+)
+
+/** An export sent (or to be sent) to an account. */
+export const posts = sqliteTable(
+  'posts',
+  {
+    id: text('id').primaryKey(),
+    renderId: text('render_id')
+      .notNull()
+      .references(() => renders.id, { onDelete: 'cascade' }),
+    clipId: text('clip_id')
+      .notNull()
+      .references(() => clips.id, { onDelete: 'cascade' }),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
+    platform: text('platform', { enum: PLATFORMS }).notNull(),
+    title: text('title').notNull(),
+    description: text('description').notNull().default(''),
+    youtube: text('youtube', { mode: 'json' }).$type<YoutubePostOptions>(),
+    tiktok: text('tiktok', { mode: 'json' }).$type<TiktokPostOptions>(),
+    status: text('status', { enum: POST_STATUSES }).notNull(),
+    remoteId: text('remote_id'),
+    url: text('url'),
+    error: text('error'),
+    scheduledAt: integer('scheduled_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    publishedAt: integer('published_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('posts_clip_idx').on(t.clipId), index('posts_status_idx').on(t.status)],
+)
+
 export type JobRow = typeof jobs.$inferSelect
 export type ProjectRow = typeof projects.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
@@ -183,3 +234,5 @@ export type TranscriptRow = typeof transcripts.$inferSelect
 export type ClipRow = typeof clips.$inferSelect
 export type ProposalRow = typeof proposals.$inferSelect
 export type RenderRow = typeof renders.$inferSelect
+export type AccountRow = typeof accounts.$inferSelect
+export type PostRow = typeof posts.$inferSelect

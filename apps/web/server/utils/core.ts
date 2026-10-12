@@ -1,10 +1,13 @@
 import {
+  AccountService,
   ClipService,
   createDb,
   getConfig,
   JobQueue,
+  loadSecretKey,
   LocalStorage,
   ModelService,
+  PostService,
   ProjectService,
   ProposalService,
   RenderService,
@@ -24,6 +27,8 @@ interface Core {
   clips: ClipService
   proposals: ProposalService
   renders: RenderService
+  accounts: AccountService
+  posts: PostService
 }
 
 // Kept on globalThis so dev-server hot reloads reuse one SQLite connection.
@@ -48,6 +53,8 @@ export function useCore(): Core {
       clips,
       proposals: new ProposalService(db, clips, projects),
       renders: new RenderService(db, queue),
+      accounts: new AccountService(db, loadSecretKey(config.dataDir)),
+      posts: new PostService(db, queue),
     }
   }
   return holder.__clipstudioCore

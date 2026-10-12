@@ -67,6 +67,18 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
   draws detections to `data/dev/faces-sheet.jpg`.
 - `snapToWords` only moves an edge that falls inside a word; edges in silence stay (visual moments aren't trimmed).
 
+## Posting (YouTube, TikTok)
+
+- `packages/social`: OAuth (PKCE; TikTok uses Login Kit for **Desktop**, hex SHA-256 challenge, localhost redirect),
+  profile, YouTube resumable upload, TikTok chunked upload (files ≤ 64 MB in one chunk) + status polling, `publishPost`.
+  Base URLs are injectable; `social.test.ts` runs everything against a fake server.
+- Accounts: `AccountService`, tokens AES-256-GCM sealed with `loadSecretKey` (env `SECRET_KEY` or `data/secret.key`).
+  `accessToken()` refreshes 2 min before expiry and marks the account `needs_reconnect` when the platform refuses.
+- Posts: `PostService.create` validates, then queues `post.publish`. Errors with `retryable: false` fail without retries
+  (no duplicate posts); a TikTok post already uploaded (`status=processing` + `remoteId`) resumes polling only.
+- TikTok UX rules followed in `PostModal.vue`: creator info fetched before posting, privacy has no default,
+  interaction switches, commercial-content disclosure, music-usage consent line. Unaudited apps: SELF_ONLY + private accounts.
+
 ## Claude / MCP
 
 - `packages/mcp` builds the server (tools + `SERVER_INSTRUCTIONS`, the clip-finding guide every client receives);
