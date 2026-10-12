@@ -1,4 +1,4 @@
-import type { AccountRow, AccountService, AppConfig, PostRow, PostService } from '@clipstudio/core'
+import { MISSED_AFTER_MS, type AccountRow, type AccountService, type AppConfig, type PostRow, type PostService } from '@clipstudio/core'
 import { SocialError } from './errors'
 import {
   TIKTOK_ENDPOINTS,
@@ -84,13 +84,38 @@ export async function publishPost(
   postId: string,
   file: UploadFile,
   opts: { signal?: AbortSignal; onProgress?: (fraction: number, message: string) => void } = {},
-): Promise<{ status: 'published' | 'sent_to_inbox' | 'scheduled'; url: string | null }> {
+): Promise<{ status: 'published' | 'sent_to_inbox' | 'scheduled' | 'missed'; url: string | null }> {
+  try {
+    return await sendPost(deps, postId, file, opts)
+  } catch (error) {
+    // The platform refused the sign-in mid-post: flag the account so the UI asks to reconnect.
+    const accountId = deps.posts.get(postId)?.accountId
+    if (error instanceof SocialError && error.kind === 'auth' && accountId && deps.accounts.get(accountId)) deps.accounts.markNeedsReconnect(accountId)
+    throw error
+  }
+}
+
+async function sendPost(
+  deps: PublishDeps,
+  postId: string,
+  file: UploadFile,
+  opts: { signal?: AbortSignal; onProgress?: (fraction: number, message: string) => void } = {},
+): Promise<{ status: 'published' | 'sent_to_inbox' | 'scheduled' | 'missed'; url: string | null }> {
   const { posts, accounts, apps } = deps
   const post = posts.get(postId)
   if (!post) throw new Error('This post no longer exists.')
   if (!post.accountId) throw new SocialError('The account for this post was disconnected.', 'auth', false)
   if (post.status === 'published' || post.status === 'sent_to_inbox' || post.status === 'scheduled') {
     return { status: post.status, url: post.url }
+  }
+  // Too late: never post silently hours after the planned time; the user decides (post now, reschedule, skip).
+  if (post.scheduledAt && post.status === 'queued') {
+    const at = post.scheduledAt.getTime()
+    const tooLate = post.platform === 'tiktok' ? Date.now() - at > MISSED_AFTER_MS : at < Date.now() + 60_000
+    if (tooLate) {
+      posts.setStatus(postId, 'missed', { error: null })
+      return { status: 'missed', url: null }
+    }
   }
   const account = accounts.require(post.accountId)
   const token = await accessToken(accounts, apps, account.id, deps.endpoints)

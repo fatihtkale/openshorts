@@ -79,6 +79,17 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
 - TikTok UX rules followed in `PostModal.vue`: creator info fetched before posting, privacy has no default,
   interaction switches, commercial-content disclosure, music-usage consent line. Unaudited apps: SELF_ONLY + private accounts.
 
+## Scheduling
+
+- `shared/schedule.ts` is the maths (browser + server): `zonedToUtc` (Intl-based, DST-safe), `planTimes`
+  (edges / centred / custom, round 5 min, seeded jitter, skips passed times today), `scheduleWarnings`.
+  Defaults: US audience, America/New_York, 12:00–21:00, edge to edge (settings key `schedule.defaults`).
+- `PostService.createBatch` validates every post then saves all in one transaction (`schedule_batches`).
+  YouTube: the job runs now and uploads private + `publishAt` (scheduled posts are always public at the time).
+  TikTok: the job's `runAt` is the time. A TikTok post more than 10 min late is `missed`, never posted silently.
+- The worker runs `caffeinate -i -m` while TikTok posts are due within 12 h.
+- Claude's `propose_schedule` creates a `schedule` proposal; the Inbox opens `/schedule?proposal=…` pre-filled.
+
 ## Claude / MCP
 
 - `packages/mcp` builds the server (tools + `SERVER_INSTRUCTIONS`, the clip-finding guide every client receives);

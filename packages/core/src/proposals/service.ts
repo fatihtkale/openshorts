@@ -5,7 +5,7 @@ import type { Db } from '../db/client'
 import { clips, projects, proposals, type ProposalRow } from '../db/schema'
 import { ProjectError } from '../errors'
 import type { ProjectService } from '../projects/service'
-import type { ClipDto, ImportProposalPayload, ProposalDto, ProposalStatus } from '../shared/clips'
+import type { ClipDto, ImportProposalPayload, ProposalDto, ProposalStatus, ScheduleProposalPayload } from '../shared/clips'
 
 export interface ProposeClipsResult {
   proposal: ProposalDto
@@ -92,6 +92,34 @@ export class ProposalService {
       })
       .run()
     return this.get(id)
+  }
+
+  /** Suggests a posting day for some exported clips. Approving opens the scheduler; nothing posts from here. */
+  proposeSchedule(input: ScheduleProposalPayload & { note?: string | null; client?: string | null; title: string }): ProposalDto {
+    if (!input.clipIds.length) throw new ProjectError('Choose at least one clip', 'invalid')
+    const now = this.now()
+    const id = randomUUID()
+    this.db
+      .insert(proposals)
+      .values({
+        id,
+        kind: 'schedule',
+        status: 'pending',
+        title: input.title,
+        note: input.note?.trim() || null,
+        client: input.client ?? null,
+        payload: { clipIds: input.clipIds, date: input.date, accountIds: input.accountIds },
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+    return this.get(id)
+  }
+
+  /** The user confirmed the schedule this proposal led to. */
+  completeSchedule(id: string): void {
+    this.requirePending(id, 'schedule')
+    this.finish(id, 'done')
   }
 
   get(id: string): ProposalDto {
@@ -201,6 +229,7 @@ export class ProposalService {
       projectName: row.projectId ? (names.get(row.projectId) ?? null) : null,
       clips: clipsByProposal.get(row.id) ?? [],
       import: row.kind === 'import' ? (row.payload as ImportProposalPayload) : null,
+      schedule: row.kind === 'schedule' ? (row.payload as ScheduleProposalPayload) : null,
       resultProjectId: row.resultProjectId,
       createdAt: row.createdAt.getTime(),
       decidedAt: row.decidedAt?.getTime() ?? null,

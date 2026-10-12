@@ -110,7 +110,7 @@ export const clipEditSchema = z.object({
   emojis: z.record(z.string().max(40), z.string().max(16)),
 }) satisfies z.ZodType<ClipEdit>
 
-export const PROPOSAL_KINDS = ['clips', 'import'] as const
+export const PROPOSAL_KINDS = ['clips', 'import', 'schedule'] as const
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number]
 
 export const PROPOSAL_STATUSES = ['pending', 'done', 'dismissed'] as const
@@ -121,6 +121,14 @@ export interface ImportProposalPayload {
   meta: YoutubeMeta
   quality: DownloadQuality
   range?: TimeRange
+}
+
+/** Claude's suggestion for a posting day; the user finishes it in the scheduler. */
+export interface ScheduleProposalPayload {
+  clipIds: string[]
+  /** YYYY-MM-DD in the audience time zone. */
+  date: string | null
+  accountIds: string[]
 }
 
 export interface ProposalDto {
@@ -136,6 +144,7 @@ export interface ProposalDto {
   projectName: string | null
   clips: ClipDto[]
   import: ImportProposalPayload | null
+  schedule: ScheduleProposalPayload | null
   /** For an approved import: the project it created. */
   resultProjectId: string | null
   createdAt: number

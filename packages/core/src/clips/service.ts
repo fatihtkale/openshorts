@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { defaultEdit, type ClipEdit } from '@clipstudio/captions'
-import { and, asc, desc, eq, inArray, ne } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { clips, projects, renders, transcripts, type ClipRow, type RenderRow } from '../db/schema'
+import { clips, posts, projects, renders, transcripts, type ClipRow, type RenderRow } from '../db/schema'
 import { ProjectError } from '../errors'
 import {
   CLIP_MAX_MS,
@@ -84,6 +84,30 @@ export class ClipService {
       .all()
     const latest = this.latestRenders(rows.map((r) => r.id))
     return rows.map((r) => toClipDto(r, latest.get(r.id) ?? null))
+  }
+
+  /** Approved clips with a finished export, across all projects (what the scheduler can post). */
+  exported(): { clip: ClipDto; projectName: string; posts: number }[] {
+    const rows = this.db
+      .select({ clip: clips, projectName: projects.name })
+      .from(clips)
+      .innerJoin(projects, eq(projects.id, clips.projectId))
+      .where(and(eq(clips.status, 'approved'), isNull(projects.deletedAt)))
+      .orderBy(desc(clips.updatedAt))
+      .all()
+    const latest = this.latestRenders(rows.map((r) => r.clip.id))
+    const postCounts = new Map(
+      this.db
+        .select({ clipId: posts.clipId, n: count() })
+        .from(posts)
+        .where(ne(posts.status, 'cancelled'))
+        .groupBy(posts.clipId)
+        .all()
+        .map((r) => [r.clipId, r.n]),
+    )
+    return rows
+      .map((r) => ({ clip: toClipDto(r.clip, latest.get(r.clip.id) ?? null), projectName: r.projectName, posts: postCounts.get(r.clip.id) ?? 0 }))
+      .filter((r) => r.clip.render?.status === 'done')
   }
 
   /** The newest render of each clip. */

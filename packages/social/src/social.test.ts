@@ -266,6 +266,34 @@ describe('publishPost', () => {
     await expect(publishPost({ posts, accounts, apps, endpoints: { tiktok: tt() } }, post.id, file)).rejects.toBeInstanceOf(SocialError)
   })
 
+  it('marks a TikTok post missed instead of posting it long after its time', async () => {
+    const a = accounts.connect('tiktok', { externalId: 'open-1', displayName: 'Maker', username: null, avatarUrl: null }, {
+      accessToken: 'tok',
+      refreshToken: 'r',
+      expiresAt: Date.now() + 3_600_000,
+      refreshExpiresAt: null,
+      scopes: [],
+    })
+    const post = posts.create({
+      renderId,
+      accountId: a.id,
+      title: '',
+      scheduledAt: Date.now() + 5 * 60_000,
+      tiktok: { mode: 'direct', privacy: 'SELF_ONLY', allowComments: true, allowDuet: true, allowStitch: true, brandContent: false, brandOrganic: false, aiGenerated: false },
+    })
+    // Pretend the Mac slept through it: the time was 20 minutes ago.
+    posts.reschedule(post.id, Date.now() + 3 * 60_000)
+    const db = (globalThis as { __db?: ReturnType<typeof createTestDb> }).__db!
+    const { posts: postsTable } = await import('@clipstudio/core')
+    const { eq } = await import('drizzle-orm')
+    db.update(postsTable).set({ scheduledAt: new Date(Date.now() - 20 * 60_000) }).where(eq(postsTable.id, post.id)).run()
+    seen.length = 0
+    const result = await publishPost({ posts, accounts, apps, endpoints: { tiktok: tt() } }, post.id, file)
+    expect(result.status).toBe('missed')
+    expect(seen).toEqual([])
+    expect(posts.dto(post.id).status).toBe('missed')
+  })
+
   it('validates posts before queueing them', () => {
     const a = accounts.connect('youtube', { externalId: 'UC1', displayName: 'Chan', username: null, avatarUrl: null }, {
       accessToken: 'tok',

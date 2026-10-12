@@ -346,6 +346,41 @@ export function createMcpServer(deps: McpDeps): McpServer {
       }),
   )
 
+  server.registerTool(
+    'propose_schedule',
+    {
+      title: 'Propose a posting day',
+      description:
+        'Suggests posting some exported clips on a day. The user opens it from the Inbox in the scheduler, checks the times, accounts and texts, and confirms there. Use list_clips to find clips that are exported.',
+      inputSchema: {
+        clips: z.array(z.object({ projectId: z.string(), title: z.string() })).min(1).max(20).describe('Clips by project and exact title, in posting order.'),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('YYYY-MM-DD in the audience time zone (default: the user picks).'),
+        note: z.string().max(1000).optional(),
+      },
+    },
+    ({ clips: wanted, date, note }) =>
+      guard(() => {
+        const ids: string[] = []
+        const problems: string[] = []
+        for (const w of wanted) {
+          const clip = clips.list(w.projectId, ['approved']).find((c) => c.title.trim().toLowerCase() === w.title.trim().toLowerCase())
+          if (!clip) problems.push(`"${w.title}": no approved clip with that title in that project`)
+          else if (clip.render?.status !== 'done') problems.push(`"${w.title}": not exported yet (the user exports it in the editor)`)
+          else ids.push(clip.id)
+        }
+        if (!ids.length) return fail(`Nothing to schedule. ${problems.join('; ')}`)
+        proposals.proposeSchedule({ clipIds: ids, date: date ?? null, accountIds: [], note, client: deps.client, title: `Post ${ids.length} ${ids.length === 1 ? 'clip' : 'clips'}${date ? ` on ${date}` : ''}` })
+        return ok(
+          [
+            `Proposed a posting plan for ${ids.length} clip${ids.length === 1 ? '' : 's'}. The user finishes it in the scheduler from the Inbox: ${inboxUrl}`,
+            problems.length ? `Left out: ${problems.join('; ')}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        )
+      }),
+  )
+
   // ── Prompts ─────────────────────────────────────────────────────────
 
   server.registerPrompt(

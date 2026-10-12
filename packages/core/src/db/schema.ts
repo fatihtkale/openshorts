@@ -195,6 +195,18 @@ export const accounts = sqliteTable(
   (t) => [uniqueIndex('accounts_platform_external_idx').on(t.platform, t.externalId)],
 )
 
+/** Posts planned together (one day, one spread), so the calendar can show and change them as a group. */
+export const scheduleBatches = sqliteTable('schedule_batches', {
+  id: text('id').primaryKey(),
+  date: text('date').notNull(),
+  timeZone: text('time_zone').notNull(),
+  windowStart: text('window_start').notNull(),
+  windowEnd: text('window_end').notNull(),
+  mode: text('mode').notNull(),
+  jitterMin: integer('jitter_min').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 /** An export sent (or to be sent) to an account. */
 export const posts = sqliteTable(
   'posts',
@@ -220,11 +232,12 @@ export const posts = sqliteTable(
     url: text('url'),
     error: text('error'),
     scheduledAt: integer('scheduled_at', { mode: 'timestamp_ms' }),
+    batchId: text('batch_id').references(() => scheduleBatches.id, { onDelete: 'set null' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
     publishedAt: integer('published_at', { mode: 'timestamp_ms' }),
   },
-  (t) => [index('posts_clip_idx').on(t.clipId), index('posts_status_idx').on(t.status)],
+  (t) => [index('posts_clip_idx').on(t.clipId), index('posts_status_idx').on(t.status), index('posts_scheduled_idx').on(t.scheduledAt)],
 )
 
 export type JobRow = typeof jobs.$inferSelect

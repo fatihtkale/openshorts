@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { COMMON_TIME_ZONES } from '@clipstudio/core/shared'
+
 const { data: status, refresh } = await useFetch<{ client: string | null; lastSeen: number | null; url: string }>('/api/mcp-status', {
   server: false,
 })
@@ -27,6 +29,36 @@ async function copy(text: string) {
   await navigator.clipboard.writeText(text)
   toast.add({ title: 'Copied', icon: 'i-lucide-clipboard-check' })
 }
+
+// ── Posting defaults ────────────────────────────────────────────────
+interface Defaults {
+  timeZone: string
+  windowStart: string
+  windowEnd: string
+  mode: 'edges' | 'centred' | 'custom'
+  jitterMin: number
+  minGapMin: number
+}
+const { data: defaults } = await useFetch<Defaults>('/api/settings/schedule', { server: false })
+const savingDefaults = ref(false)
+async function saveDefaults() {
+  if (!defaults.value) return
+  savingDefaults.value = true
+  try {
+    defaults.value = await $fetch<Defaults>('/api/settings/schedule', { method: 'PUT', body: defaults.value })
+    toast.add({ title: 'Posting defaults saved', icon: 'i-lucide-check' })
+  } catch (e) {
+    toast.add({ title: 'Could not save', description: (e as Error).message, color: 'error' })
+  } finally {
+    savingDefaults.value = false
+  }
+}
+const zoneItems = computed(() =>
+  [...new Set([defaults.value?.timeZone, Intl.DateTimeFormat().resolvedOptions().timeZone, ...COMMON_TIME_ZONES].filter(Boolean) as string[])].map((z) => ({
+    label: z.replace(/_/g, ' '),
+    value: z,
+  })),
+)
 
 const tools = [
   { name: 'Read', icon: 'i-lucide-eye', items: 'projects, transcripts, search, video frames, clips, past proposals' },
@@ -106,6 +138,50 @@ const tools = [
             </ul>
           </section>
         </div>
+      </UCard>
+
+      <UCard v-if="defaults">
+        <template #header>
+          <h2 class="font-semibold">Posting defaults</h2>
+          <p class="text-sm text-muted">
+            Where the scheduler starts. The defaults aim at a US audience: weekday afternoons and evenings are when the posting studies
+            agree people watch most.
+          </p>
+        </template>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <UFormField label="Audience time zone" class="sm:col-span-2">
+            <USelect v-model="defaults.timeZone" :items="zoneItems" value-key="value" class="w-full" />
+          </UFormField>
+          <UFormField label="Post from">
+            <UInput v-model="defaults.windowStart" type="time" class="w-full" />
+          </UFormField>
+          <UFormField label="Until">
+            <UInput v-model="defaults.windowEnd" type="time" class="w-full" />
+          </UFormField>
+          <UFormField label="Spread">
+            <USelect
+              v-model="defaults.mode"
+              :items="[
+                { label: 'Edge to edge', value: 'edges' },
+                { label: 'Centred', value: 'centred' },
+                { label: 'My own times', value: 'custom' },
+              ]"
+              value-key="value"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField :label="`Warn when posts are less than ${defaults.minGapMin} min apart`">
+            <USlider v-model="defaults.minGapMin" :min="0" :max="240" :step="15" />
+          </UFormField>
+          <UFormField :label="defaults.jitterMin ? `Vary times by up to ±${defaults.jitterMin} min` : 'Exact times'">
+            <USlider v-model="defaults.jitterMin" :min="0" :max="30" :step="5" />
+          </UFormField>
+        </div>
+        <template #footer>
+          <div class="flex justify-end">
+            <UButton label="Save defaults" :loading="savingDefaults" @click="saveDefaults" />
+          </div>
+        </template>
       </UCard>
     </div>
   </PageShell>

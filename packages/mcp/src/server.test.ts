@@ -63,7 +63,7 @@ describe('MCP server', () => {
     expect(client.getInstructions()).toMatch(/can only PROPOSE/)
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ['get_frames', 'get_transcript', 'list_clips', 'list_projects', 'list_proposals', 'propose_clips', 'propose_import', 'search_transcript'].sort(),
+      ['get_frames', 'get_transcript', 'list_clips', 'list_projects', 'list_proposals', 'propose_clips', 'propose_import', 'propose_schedule', 'search_transcript'].sort(),
     )
     expect(tools.find((t) => t.name === 'get_transcript')?.annotations?.readOnlyHint).toBe(true)
   })
@@ -109,6 +109,18 @@ describe('MCP server', () => {
 
     const listed = JSON.parse(text(await client.callTool({ name: 'list_clips', arguments: { projectId } })))
     expect(listed[0]).toMatchObject({ title: 'The one trick', status: 'waiting in Inbox' })
+  })
+
+  it('only proposes schedules for exported clips', async () => {
+    await client.callTool({ name: 'propose_clips', arguments: { projectId, clips: [{ startSec: 1.2, endSec: 10.5, title: 'The one trick' }] } })
+    const pending = proposals.list('pending')[0]!
+    proposals.decideClips(pending.id, [{ clipId: pending.clips[0]!.id, approve: true }])
+    const result = await client.callTool({
+      name: 'propose_schedule',
+      arguments: { clips: [{ projectId, title: 'The one trick' }], date: '2026-10-20' },
+    })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toMatch(/not exported yet/)
   })
 
   it('offers a find_clips prompt', async () => {

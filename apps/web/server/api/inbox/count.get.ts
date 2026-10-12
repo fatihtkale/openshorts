@@ -1,1 +1,4 @@
-export default defineEventHandler(() => ({ pending: useCore().proposals.pendingCount() }))
+export default defineEventHandler(() => {
+  const { proposals, posts } = useCore()
+  return { pending: proposals.pendingCount(), missed: posts.missedCount() }
+})

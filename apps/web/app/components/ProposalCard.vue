@@ -138,6 +138,19 @@ defineExpose({ decide })
       </li>
     </ul>
 
+    <!-- Schedule -->
+    <div v-else-if="proposal.schedule" class="space-y-3 p-4 sm:px-6">
+      <p class="text-sm">
+        {{ proposal.schedule.clipIds.length }} {{ proposal.schedule.clipIds.length === 1 ? 'clip' : 'clips' }}
+        <template v-if="proposal.schedule.date"> on {{ new Date(`${proposal.schedule.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) }}</template>.
+        You choose the accounts and check every time and text in the scheduler.
+      </p>
+      <div v-if="pending" class="flex gap-2">
+        <UButton label="Open in scheduler" icon="i-lucide-calendar-plus" size="sm" :to="`/schedule?proposal=${proposal.id}`" />
+        <UButton label="Dismiss" color="neutral" variant="outline" size="sm" :loading="busy === 'dismiss'" @click="dismiss" />
+      </div>
+    </div>
+
     <!-- Import -->
     <div v-else-if="proposal.import" class="flex flex-col gap-4 p-4 sm:flex-row sm:px-6">
       <img :src="proposal.import.meta.thumbnailUrl" alt="" class="aspect-video w-full shrink-0 self-start rounded-md object-cover sm:w-64" />

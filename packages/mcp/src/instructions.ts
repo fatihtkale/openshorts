@@ -15,6 +15,9 @@ Finding clips
 7. Call propose_clips ONCE with all clips, best first. For each: a title (60 characters or fewer, honest), a hook (the on-screen text for the first seconds, 10 words or fewer), the reason it works, a 0–100 score, 3–6 keywords from the spoken words (used to highlight captions), and optionally a few emojis for key spoken words.
 8. Tell the user how many clips you proposed, the best two or three in a line each, and that they're waiting in the Inbox.
 
+Posting
+- propose_schedule with exported clips (list_clips shows "exported") and a day. The user picks accounts, checks times and texts in the scheduler, and confirms. Default posting hours are 12:00–21:00 US Eastern.
+
 Importing videos
 - propose_import with a YouTube link. The user confirms the download in the Inbox. Only suggest videos the user owns or may reuse.`
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { presetById } from '@clipstudio/captions'
-import { formatTimecode, PLATFORM_LABELS, type PostDto, type RenderDto } from '@clipstudio/core/shared'
+import { formatTimecode, PLATFORM_LABELS, POST_STATUS_LABELS, type PostDto, type RenderDto } from '@clipstudio/core/shared'
 import type { ClipEditor } from '~/composables/useClipEditor'
 
 const props = defineProps<{ editor: ClipEditor }>()
@@ -65,15 +65,7 @@ onJobStatusChange((job) => {
 const postRender = ref<RenderDto | null>(null)
 const postOpen = computed({ get: () => !!postRender.value, set: (v) => !v && (postRender.value = null) })
 
-const postLabels: Record<PostDto['status'], string> = {
-  queued: 'Waiting to post',
-  uploading: 'Uploading',
-  processing: 'Processing on the platform',
-  published: 'Posted',
-  scheduled: 'Scheduled',
-  sent_to_inbox: 'In your TikTok drafts',
-  failed: 'Failed',
-}
+const postLabels = POST_STATUS_LABELS
 function postJob(p: PostDto) {
   return jobs.value.find((j) => j.subjectId === p.id && (j.status === 'queued' || j.status === 'running'))
 }

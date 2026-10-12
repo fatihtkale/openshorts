@@ -13,6 +13,7 @@
     "@clipstudio/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "drizzle-orm": "^0.45.4"
   }
 }

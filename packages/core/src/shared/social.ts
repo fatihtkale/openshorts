@@ -18,7 +18,11 @@ export interface AccountDto {
   updatedAt: number
 }
 
-export const POST_STATUSES = ['queued', 'uploading', 'processing', 'published', 'scheduled', 'sent_to_inbox', 'failed'] as const
+/**
+ * queued: waiting to be sent (for TikTok, until its scheduled time); scheduled: on YouTube, which publishes it at the time;
+ * missed: the Mac was asleep at the time, so nothing was posted and the user decides what to do.
+ */
+export const POST_STATUSES = ['queued', 'uploading', 'processing', 'published', 'scheduled', 'sent_to_inbox', 'failed', 'missed', 'cancelled'] as const
 export type PostStatus = (typeof POST_STATUSES)[number]
 
 export const YOUTUBE_PRIVACY = ['private', 'unlisted', 'public'] as const
@@ -70,8 +74,16 @@ export interface PostDto {
   url: string | null
   error: string | null
   scheduledAt: number | null
+  batchId: string | null
   createdAt: number
   publishedAt: number | null
+}
+
+/** A post with what the calendar shows next to it. */
+export interface CalendarPost extends PostDto {
+  clipTitle: string
+  projectName: string
+  accountName: string | null
 }
 
 export interface CreatePostInput {
@@ -81,7 +93,24 @@ export interface CreatePostInput {
   description?: string
   youtube?: YoutubePostOptions
   tiktok?: TiktokPostOptions
+  /** Epoch ms; omitted = post now. */
+  scheduledAt?: number | null
 }
+
+export const POST_STATUS_LABELS: Record<PostStatus, string> = {
+  queued: 'Waiting to post',
+  uploading: 'Uploading',
+  processing: 'Processing on the platform',
+  published: 'Posted',
+  scheduled: 'Scheduled on YouTube',
+  sent_to_inbox: 'In your TikTok drafts',
+  failed: 'Failed',
+  missed: 'Missed',
+  cancelled: 'Cancelled',
+}
+
+/** A TikTok post is "missed" if the Mac wakes up this long after its time. */
+export const MISSED_AFTER_MS = 10 * 60_000
 
 export const POST_LIMITS = {
   youtubeTitle: 100,

@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { hostname } from 'node:os'
 import { socialApps } from '@clipstudio/social'
 import {
@@ -59,6 +60,30 @@ function beat(alive = true) {
   setSetting(db, WORKER_HEARTBEAT_KEY, value)
 }
 
+// Keep the Mac awake while scheduled TikTok posts are coming up (TikTok can't schedule on its own).
+// caffeinate -i stops idle sleep; a closed lid on battery still sleeps, which is why missed posts exist.
+let caffeinate: ReturnType<typeof spawn> | null = null
+function keepAwake() {
+  if (process.platform !== 'darwin') return
+  const upcoming = deps.posts.upcomingTiktok(Date.now() + 12 * 3_600_000)
+  if (upcoming.length && !caffeinate) {
+    caffeinate = spawn('caffeinate', ['-i', '-m', '-w', String(process.pid)], { stdio: 'ignore' })
+    caffeinate.on('exit', () => (caffeinate = null))
+    console.log(`[worker] keeping the Mac awake for ${upcoming.length} scheduled TikTok post(s)`)
+  } else if (!upcoming.length && caffeinate) {
+    caffeinate.kill()
+    caffeinate = null
+  }
+}
+const awakeTimer = setInterval(() => {
+  try {
+    keepAwake()
+  } catch (error) {
+    console.error('[worker] keep-awake check failed', error)
+  }
+}, 60_000)
+keepAwake()
+
 worker.start()
 beat()
 const beatTimer = setInterval(beat, 5_000)
@@ -70,6 +95,8 @@ async function shutdown(signal: string) {
   shuttingDown = true
   console.log(`[worker] ${signal}: stopping`)
   clearInterval(beatTimer)
+  clearInterval(awakeTimer)
+  caffeinate?.kill()
   await worker.stop()
   beat(false)
   db.$client.close()

@@ -343,7 +343,7 @@ settings        key, value(json)      -- defaults: timezone, window, spread mode
 | 4 ✅ | **Editor & render**: text trimming (+ pause/filler removal), Fill/Fit/Split layouts with moving crop, caption engine + 9 presets, hook, export, export-all | Downloadable captioned 9:16 MP4 that matches the preview |
 | 4b ✅ | **Auto-reframe**: face tracking, smoothed crop path, scene-cut aware | Talking-head video stays framed without manual keys |
 | 5 🔧 | **Accounts & publishing** (built; real posting waits for the developer apps): YouTube + TikTok OAuth, single post with a confirm screen, TikTok draft mode. **Then submit both audits** | A clip posted (private/draft) from the app |
-| 6 | **Scheduler**: wizard with spread modes, ET/local display, calendar, dispatcher, missed-post handling, keep-awake, `propose_posts` | "4 clips across Friday" works end to end, from the UI and from Claude |
+| 6 ✅ | **Scheduler**: wizard with spread modes, ET/local display, calendar, dispatcher, missed-post handling, keep-awake, `propose_posts` | "4 clips across Friday" works end to end, from the UI and from Claude |
 | 7 | **Learning & extras**: views after 48 h → personal best times, optional in-app AI (API key / Ollama), Split/Screen layouts | The scheduler suggests times from your own results |
 | 8 | **Server-readiness** (only if needed): S3 storage driver, Postgres, Redis queue, app login, Playwright e2e | — |
 
