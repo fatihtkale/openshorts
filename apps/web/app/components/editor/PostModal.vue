@@ -24,6 +24,8 @@ const emit = defineEmits<{ posted: [post: PostDto] }>()
 const toast = useToast()
 
 const { data: accountsData } = await useFetch<{ accounts: AccountDto[] }>('/api/accounts', { server: false })
+// Default hashtags (Settings → Posting defaults, optional) become the suggested description.
+const { data: postingDefaults } = await useFetch<{ hashtags?: string }>('/api/settings/schedule', { server: false })
 const accounts = computed(() => (accountsData.value?.accounts ?? []).filter((a) => a.status === 'connected'))
 
 const step = ref<'edit' | 'review'>('edit')
@@ -36,6 +38,7 @@ const description = ref('')
 const tags = ref('')
 const ytPrivacy = ref<YoutubePrivacy | undefined>()
 const madeForKids = ref(false)
+const relatedVideo = ref('')
 
 const ttMode = ref<'direct' | 'draft'>('direct')
 const ttPrivacy = ref<TiktokPrivacyLevel | undefined>()
@@ -77,7 +80,7 @@ watch(
   async () => {
     const p = platform.value
     if (!p) return
-    const s = suggestPostText(props.clip, p)
+    const s = suggestPostText(props.clip, p, postingDefaults.value?.hashtags ?? '')
     title.value = s.title
     description.value = s.description
     tags.value = s.tags.join(', ')
@@ -166,7 +169,10 @@ async function post() {
         accountId: account.value.id,
         title: title.value,
         description: description.value,
-        youtube: platform.value === 'youtube' ? { privacy: ytPrivacy.value, tags: tagList.value, madeForKids: madeForKids.value } : undefined,
+        youtube:
+          platform.value === 'youtube'
+            ? { privacy: ytPrivacy.value, tags: tagList.value, madeForKids: madeForKids.value, relatedVideo: relatedVideo.value.trim() || null }
+            : undefined,
         tiktok:
           platform.value === 'tiktok'
             ? {
@@ -235,6 +241,9 @@ const accountItems = computed(() => accounts.value.map((a) => ({ label: `${PLATF
             />
           </UFormField>
           <USwitch v-model="madeForKids" label="Made for kids" description="YouTube asks this of every video." />
+          <UFormField label="Related video" help="Optional reminder. YouTube only lets you set this in YouTube Studio; the post will show it with a button to go there.">
+            <UInput v-model="relatedVideo" placeholder="Title or link of the video to link" class="w-full" />
+          </UFormField>
         </template>
 
         <!-- TikTok -->

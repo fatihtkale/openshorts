@@ -146,7 +146,7 @@ async function restore(clip: ClipDto) {
           </p>
           <p class="text-xs text-muted tabular-nums">
             {{ formatTimecode(clip.startMs / 1000) }}–{{ formatTimecode(clip.endMs / 1000) }} · {{ formatTimecode((clip.endMs - clip.startMs) / 1000) }}
-            · {{ clip.origin === 'claude' ? 'by Claude' : 'made by you' }}
+            · {{ clip.origin === 'claude' ? 'by Claude' : clip.origin === 'imported' ? 'Twitch clip' : 'made by you' }}
             <template v-if="exportState(clip)">
               ·
               <span

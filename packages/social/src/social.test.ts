@@ -20,6 +20,9 @@ import { SocialError } from './errors'
 import { challengeBase64Url, challengeHex, codeVerifier } from './pkce'
 import { accessToken, publishPost, type SocialApps } from './publish'
 import { collectPostStats } from './stats'
+import { editPostText, reschedulePost } from './edit'
+import { YOUTUBE_EDIT_SCOPE } from './youtube'
+import { parseTwitchDuration, resetTwitchToken, twitchVod, twitchVodClips } from './twitch-api'
 import { tiktokAuthUrl, tiktokChunks, tiktokError, tiktokExchangeCode } from './tiktok'
 import { youtubeAuthUrl, youtubeError, youtubeExchangeCode, youtubeProfile } from './youtube'
 
@@ -34,6 +37,8 @@ let server: Server
 let base = ''
 const seen: Seen[] = []
 let tiktokPolls = 0
+let twitchTokens = 0
+let twitchExpireFirst = false
 
 function json(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
   res.writeHead(status, { 'content-type': 'application/json', ...headers })
@@ -61,6 +66,7 @@ beforeAll(async () => {
       const ids = (url.searchParams.get('id') ?? '').split(',')
       return json(res, 200, { items: ids.filter((id) => id === 'vid42').map((id) => ({ id, statistics: { viewCount: '1234', likeCount: '56', commentCount: '7' } })) })
     }
+    if (url.pathname === '/yt/videos' && req.method === 'PUT') return json(res, 200, { id: 'vid42' })
     if (url.pathname === '/ytup/videos' && req.method === 'POST') return json(res, 200, {}, { location: `${base}/ytup/session/1` })
     if (url.pathname === '/ytup/session/1' && req.method === 'PUT') return json(res, 200, { id: 'vid42' })
 
@@ -98,6 +104,26 @@ beforeAll(async () => {
     if (url.pathname === '/tt/v2/video/query/') {
       const ids = (JSON.parse(body.toString()) as { filters: { video_ids: string[] } }).filters.video_ids
       return json(res, 200, { data: { videos: ids.map((id) => ({ id, view_count: 900, like_count: 80, comment_count: 4, share_count: 3 })) }, error: { code: 'ok' } })
+    }
+    // Twitch Helix (app token)
+    if (url.pathname === '/twitch/token') {
+      twitchTokens++
+      return json(res, 200, { access_token: `app-${twitchTokens}`, expires_in: 3600 })
+    }
+    if (url.pathname.startsWith('/helix/')) {
+      if (req.headers.authorization === 'Bearer app-1' && twitchExpireFirst) return json(res, 401, { message: 'Invalid OAuth token' })
+      if (url.pathname === '/helix/videos') {
+        return json(res, 200, { data: [{ id: '42', user_id: '777', user_login: 'smallstreamer', title: 'Ranked', created_at: '2026-10-01T18:00:00Z', duration: '3h2m1s' }] })
+      }
+      if (url.pathname === '/helix/clips') {
+        const page2 = url.searchParams.get('after') === 'p2'
+        const clip = (id: string, video: string, views: number, offset: number | null) => ({
+          id, url: `https://clips.twitch.tv/${id}`, title: id, view_count: views, video_id: video, vod_offset: offset, duration: 30, created_at: '2026-10-01T19:00:00Z', creator_name: 'fan',
+        })
+        return json(res, 200, page2
+          ? { data: [clip('C', '42', 900, 7200)], pagination: {} }
+          : { data: [clip('A', '42', 50, 600), clip('B', '99', 9999, 10)], pagination: { cursor: 'p2' } })
+      }
     }
     json(res, 404, { error: 'not found' })
   })
@@ -283,6 +309,55 @@ describe('publishPost', () => {
     expect(await collectPostStats({ posts, accounts, apps, endpoints: { tiktok: tt() } }, tp.id)).toEqual({ views: 900 })
   })
 
+  it('edits a video on YouTube only with the edit permission, and saves only what YouTube accepted', async () => {
+    const tokens = { accessToken: 'tok', refreshToken: 'r', expiresAt: Date.now() + 3_600_000, refreshExpiresAt: null }
+    const old = accounts.connect('youtube', { externalId: 'UC1', displayName: 'Chan', username: null, avatarUrl: null }, { ...tokens, scopes: [] })
+    const post = posts.create({ renderId, accountId: old.id, title: 'Old title', youtube: { privacy: 'public', tags: [], madeForKids: false } })
+    posts.setStatus(post.id, 'published', { remoteId: 'vid42', publishedAt: new Date() })
+
+    await expect(editPostText({ posts, accounts, apps, endpoints: { youtube: yt() } }, post.id, { title: 'New' })).rejects.toThrow(/Reconnect YouTube/)
+    expect(posts.dto(post.id).title).toBe('Old title')
+
+    accounts.connect('youtube', { externalId: 'UC1', displayName: 'Chan', username: null, avatarUrl: null }, { ...tokens, scopes: [YOUTUBE_EDIT_SCOPE] })
+    seen.length = 0
+    const updated = await editPostText({ posts, accounts, apps, endpoints: { youtube: yt() } }, post.id, {
+      title: 'Marty saves Lang #Shorts',
+      description: '#NoPixel #GTARP',
+      tags: ['nopixel'],
+    })
+    const put = seen.find((x) => x.path === '/yt/videos' && x.method === 'PUT')!
+    expect(JSON.parse(put.body.toString())).toEqual({
+      id: 'vid42',
+      snippet: { title: 'Marty saves Lang #Shorts', description: '#NoPixel #GTARP', tags: ['nopixel'], categoryId: '24' },
+    })
+    expect(updated).toMatchObject({ title: 'Marty saves Lang #Shorts', description: '#NoPixel #GTARP' })
+  })
+
+  it('moves a scheduled YouTube video on YouTube first, and its view checks with it', async () => {
+    const tokens = { accessToken: 'tok', refreshToken: 'r', expiresAt: Date.now() + 3_600_000, refreshExpiresAt: null }
+    const a = accounts.connect('youtube', { externalId: 'UC1', displayName: 'Chan', username: null, avatarUrl: null }, { ...tokens, scopes: [YOUTUBE_EDIT_SCOPE] })
+    const oldTime = Date.now() + 5 * 3_600_000
+    const post = posts.create({ renderId, accountId: a.id, title: 'Jump', scheduledAt: oldTime, youtube: { privacy: 'public', tags: [], madeForKids: false } })
+    posts.setStatus(post.id, 'scheduled', { remoteId: 'vid42' })
+    const statsRuns = () =>
+      queue.listRecent(50).filter((j) => j.type === 'post.stats' && j.status === 'queued' && (j.payload as { postId: string }).postId === post.id).map((j) => j.runAt.getTime())
+    expect(statsRuns()).toContain(oldTime + 48 * 3_600_000)
+
+    const newTime = oldTime + 2.5 * 3_600_000
+    seen.length = 0
+    const moved = await reschedulePost({ posts, accounts, apps, endpoints: { youtube: yt() } }, post.id, newTime)
+    const put = seen.find((x) => x.path === '/yt/videos' && x.method === 'PUT')!
+    expect(JSON.parse(put.body.toString())).toEqual({
+      id: 'vid42',
+      status: { privacyStatus: 'private', publishAt: new Date(newTime).toISOString(), selfDeclaredMadeForKids: false },
+    })
+    expect(moved).toMatchObject({ status: 'scheduled', scheduledAt: newTime })
+    expect(statsRuns().sort()).toEqual([newTime + 48 * 3_600_000, newTime + 7 * 24 * 3_600_000])
+
+    await expect(reschedulePost({ posts, accounts, apps, endpoints: { youtube: yt() } }, post.id, Date.now() + 60_000)).rejects.toThrow(/15 minutes/)
+    await expect(reschedulePost({ posts, accounts, apps, endpoints: { youtube: yt() } }, post.id, null)).rejects.toThrow(/already on YouTube/)
+  })
+
   it('refuses a privacy level the creator does not offer', async () => {
     const a = accounts.connect('tiktok', { externalId: 'open-1', displayName: 'Maker', username: null, avatarUrl: null }, {
       accessToken: 'tok',
@@ -340,5 +415,36 @@ describe('publishPost', () => {
     expect(() => posts.create({ renderId, accountId: a.id, title: 'a <b>', youtube: { privacy: 'public', tags: [], madeForKids: false } })).toThrow(/< or >/)
     accounts.markNeedsReconnect(a.id)
     expect(() => posts.create({ renderId, accountId: a.id, title: 'ok', youtube: { privacy: 'public', tags: [], madeForKids: false } })).toThrow(/Reconnect/)
+  })
+})
+
+describe('Twitch API (app token)', () => {
+  const app = { clientId: 'cid', clientSecret: 'sec' }
+  const ep = () => ({ token: `${base}/twitch/token`, api: `${base}/helix` })
+
+  it('reads a VOD and the clips viewers made from it, most viewed first', async () => {
+    resetTwitchToken()
+    twitchTokens = 0
+    twitchExpireFirst = false
+    const vod = (await twitchVod(app, 'v42', ep()))!
+    expect(vod).toMatchObject({ id: '42', userId: '777', durationSec: 3 * 3600 + 2 * 60 + 1 })
+    const clips = await twitchVodClips(app, vod, ep())
+    // Clip B belongs to another VOD; both pages are read.
+    expect(clips.map((c) => [c.id, c.vodOffsetSec])).toEqual([['C', 7200], ['A', 600]])
+  })
+
+  it('gets a fresh token when Twitch says the old one expired', async () => {
+    resetTwitchToken()
+    twitchTokens = 0
+    twitchExpireFirst = true
+    expect(await twitchVod(app, '42', ep())).not.toBeNull()
+    expect(twitchTokens).toBe(2)
+    twitchExpireFirst = false
+  })
+
+  it('parses Twitch durations', () => {
+    expect(parseTwitchDuration('1h0m5s')).toBe(3605)
+    expect(parseTwitchDuration('45s')).toBe(45)
+    expect(parseTwitchDuration('nonsense')).toBe(0)
   })
 })

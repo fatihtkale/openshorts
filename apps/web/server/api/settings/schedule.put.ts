@@ -1,4 +1,4 @@
-import { SPREAD_MODES, setSetting } from '@clipstudio/core'
+import { MAX_PER_DAY, SPREAD_MODES, setSetting } from '@clipstudio/core'
 import { z } from 'zod'
 
 const clock = z.string().regex(/^\d{2}:\d{2}$/)
@@ -16,6 +16,8 @@ const body = z.object({
   mode: z.enum(SPREAD_MODES),
   jitterMin: z.number().int().min(0).max(60),
   minGapMin: z.number().int().min(0).max(600),
+  hashtags: z.string().max(300).default(''),
+  perDay: z.number().int().min(1).max(MAX_PER_DAY).default(3),
 })
 
 /** Saves the posting defaults the scheduler starts from. */

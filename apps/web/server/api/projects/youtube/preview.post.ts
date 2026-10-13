@@ -1,4 +1,4 @@
-import { parseYoutubeUrl, type YoutubePreview } from '@clipstudio/core'
+import { parseVideoLink, type YoutubePreview } from '@clipstudio/core'
 import { fetchYoutubeInfo } from '@clipstudio/media'
 import { z } from 'zod'
 
@@ -16,23 +16,25 @@ export default defineEventHandler(async (event) => {
     while (next < links.length) {
       const i = next++
       const input = links[i]!
-      const parsed = parseYoutubeUrl(input)
+      const parsed = parseVideoLink(input)
       if (!parsed) {
-        results[i] = { input, url: null, meta: null, error: "This isn't a YouTube video link.", existing: [] }
+        results[i] = { input, url: null, meta: null, error: "This isn't a YouTube video or Twitch VOD/clip link.", existing: [] }
         continue
       }
+      const site = parsed.platform === 'twitch' ? 'Twitch' : 'YouTube'
       try {
         const meta = await fetchYoutubeInfo(parsed.url, AbortSignal.timeout(45_000))
         results[i] = {
           input,
+          platform: parsed.platform,
           url: parsed.url,
           meta,
           error: meta.isLive ? 'This is a live stream or upcoming premiere. Import it after it has ended.' : null,
           existing: projects.findByYoutubeId(meta.videoId),
         }
       } catch (error) {
-        const message = (error as Error).name === 'AbortError' ? 'YouTube took too long to answer. Try again.' : (error as Error).message
-        results[i] = { input, url: parsed.url, meta: null, error: message, existing: [] }
+        const message = (error as Error).name === 'AbortError' ? `${site} took too long to answer. Try again.` : (error as Error).message
+        results[i] = { input, platform: parsed.platform, url: parsed.url, meta: null, error: message, existing: [] }
       }
     }
   }

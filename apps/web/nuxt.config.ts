@@ -8,6 +8,9 @@ if (existsSync(rootEnv)) process.loadEnvFile(rootEnv)
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-01',
   modules: ['@nuxt/ui'],
+  // Client-only pages: the app runs on the user's own Mac, so server rendering buys nothing, and it rendered dates in
+  // the server's locale and time zone (hydration mismatches). Server routes (API, /mcp, OAuth callbacks) are unaffected.
+  ssr: false,
   css: ['~/assets/css/main.css'],
   devtools: { enabled: false },
   devServer: {

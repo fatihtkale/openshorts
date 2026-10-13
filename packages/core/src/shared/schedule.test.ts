@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatInZone, parseClock, planTimes, scheduleWarnings, zonedDate, zonedToUtc, zoneOffset } from './schedule'
+import { addDays, formatInZone, parseClock, planDays, planTimes, scheduleWarnings, zonedDate, zonedToUtc, zoneOffset } from './schedule'
 
 const NY = 'America/New_York'
 const at = (ms: number, tz = NY) => formatInZone(ms, tz)
@@ -56,6 +56,42 @@ describe('planTimes', () => {
 
   it('rejects a backwards window', () => {
     expect(() => planTimes({ ...base, windowStart: '21:00', windowEnd: '12:00', count: 2, mode: 'edges' })).toThrow(/end after/)
+  })
+})
+
+describe('planDays', () => {
+  const base = { startDate: '2026-10-16', timeZone: NY, windowStart: '12:00', windowEnd: '21:00', mode: 'edges' as const }
+  const show = (plan: { times: number[]; days: string[] }) => plan.times.map((t, i) => `${plan.days[i]!.slice(8)} ${at(t)}`)
+
+  it('splits posts over days, at most perDay a day', () => {
+    expect(show(planDays({ ...base, count: 7, perDay: 3 }))).toEqual([
+      '16 12:00', '16 16:30', '16 21:00', '17 12:00', '17 16:30', '17 21:00', '18 15:00',
+    ])
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
+  })
+
+  it('continues after the last scheduled post: fills its day, then the next days', () => {
+    const last = zonedToUtc('2026-10-16', parseClock('16:30'), NY)
+    // Room for one more on the 16th, at least 90 min after 16:30 (18:00–21:00 → its middle).
+    expect(show(planDays({ ...base, count: 4, perDay: 3, after: { time: last, postsThatDay: 2, minGapMin: 90 } }))).toEqual([
+      '16 19:30', '17 12:00', '17 16:30', '17 21:00',
+    ])
+    // A full day, or no room left in the window after the last post: the next day.
+    expect(show(planDays({ ...base, count: 1, perDay: 3, after: { time: last, postsThatDay: 3, minGapMin: 90 } }))).toEqual(['17 15:00'])
+    const late = zonedToUtc('2026-10-16', parseClock('20:00'), NY)
+    expect(show(planDays({ ...base, count: 2, perDay: 3, after: { time: late, postsThatDay: 1, minGapMin: 90 } }))).toEqual(['17 12:00', '17 21:00'])
+  })
+
+  it("starts tomorrow when today's window is over", () => {
+    const now = zonedToUtc('2026-10-16', parseClock('20:55'), NY)
+    const plan = planDays({ ...base, count: 2, perDay: 3, now })
+    expect(show(plan)).toEqual(['17 12:00', '17 21:00'])
+    expect(plan.notes[0]).toMatch(/Starts 2026-10-17/)
+  })
+
+  it('applies custom times on the day each post falls on', () => {
+    const plan = planDays({ ...base, mode: 'custom', count: 3, perDay: 2, customTimes: ['13:00', '19:00', '14:15'] })
+    expect(show(plan)).toEqual(['16 13:00', '16 19:00', '17 14:15'])
   })
 })
 

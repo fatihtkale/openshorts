@@ -345,7 +345,9 @@ settings        key, value(json)      -- defaults: timezone, window, spread mode
 | 5 🔧 | **Accounts & publishing** (built; real posting waits for the developer apps): YouTube + TikTok OAuth, single post with a confirm screen, TikTok draft mode. **Then submit both audits** | A clip posted (private/draft) from the app |
 | 6 ✅ | **Scheduler**: wizard with spread modes, ET/local display, calendar, dispatcher, missed-post handling, keep-awake, `propose_posts` | "4 clips across Friday" works end to end, from the UI and from Claude |
 | 7 ✅ | **Learning & extras**: views after 48 h and 7 d → Insights page and personal best times (suggested in the scheduler, applied after a confirm), Screen layout (screencast + facecam), optional in-app AI (Claude API key or Ollama), 4-pillar Shorts rubric for finding and evaluating clips (scores, suggested trims, mute test) | The scheduler suggests times from your own results (needs ≥ 10 measured posts, so real data waits on Phase 5's developer apps) |
-| 8 | **Server-readiness** (only if needed): S3 storage driver, Postgres, Redis queue, app login, Playwright e2e | — |
+| 8a ✅ | **Local polish**: client-only rendering (no locale/time-zone hydration mismatches), daily database backups + `pnpm backup`/`restore`, `pnpm checkup`, Playwright e2e (pages, settings, upload → transcript → proposal → approve trimmed → export) | `pnpm test:e2e` passes on a fresh data folder |
+| 9 ✅ | **Twitch**: VOD and clip import (clips become a scored clip as-is, optional auto-score), highlights map for long videos (loud moments + what viewers clipped via a Twitch app), Smart import of only the hot moments, `get_highlights` for Claude | A VOD's best moments surface without downloading the whole stream |
+| 8b ⏸ | **Server-readiness** (parked 2026-10-13: staying local): S3 storage driver, Postgres, Redis queue, app login | — |
 
 Vitest covers the scheduler maths, caption timing/layout, clip boundary snapping, proposal execution and job retries from Phase 0.
 

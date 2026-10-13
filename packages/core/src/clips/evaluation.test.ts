@@ -10,7 +10,7 @@ import type { Word } from '../shared/transcripts'
 import { LocalStorage } from '../storage'
 import { createTestDb } from '../testing'
 import { TranscriptService } from '../transcripts/service'
-import { ClipService } from './service'
+import { ClipService, cleanCuts } from './service'
 
 /** Words 500 ms apart from `at` (ms). */
 function say(text: string, at = 0): Word[] {
@@ -57,10 +57,21 @@ describe('trimLeadIn', () => {
     expect(trimLeadIn(words, 0, 40_000)).toBe(10_000 - 120)
   })
 
+  it('matches greetings the way Whisper writes them (commas, no full stop)', () => {
+    // Real whisper.cpp output for the e2e clip: "Hey guys, welcome back to the channel, so, um, here is the thing, …"
+    const words = [...say('Hey guys, welcome back to the channel, so, um,', 0), ...tail]
+    expect(trimLeadIn(words, 0, 40_000)).toBe(10_000 - 120)
+    // Only the greeting goes; the sentence after it stays whole.
+    const life = [...say('Hey guys, this video changed my life', 8_000), ...tail]
+    expect(trimLeadIn(life, 8_000, 40_000)).toBe(9_000 - 120)
+    expect(trimLeadIn([...say("What's up everyone and welcome to my podcast. Today", 6_000), ...tail], 6_000, 40_000)).toBe(6_000 + 8 * 500 - 120)
+  })
+
   it('handles "all right" and keeps meaningful openers', () => {
     expect(trimLeadIn([...say('All right, so', 8_500), ...tail], 8_500, 40_000)).toBe(10_000 - 120)
     expect(trimLeadIn([...say('Like most people I', 8_000), ...tail], 8_000, 40_000)).toBe(8_000)
     expect(trimLeadIn([...say('Hey Siri broke my', 8_000), ...tail], 8_000, 40_000)).toBe(8_000)
+    expect(trimLeadIn([...say("Hey, that's not how", 8_000), ...tail], 8_000, 40_000)).toBe(8_000)
   })
 
   it('leaves the start alone when trimming would leave too little', () => {
@@ -128,5 +139,14 @@ describe('evaluations on clips', () => {
     const tiny = clips.setEvaluation(manual.id, evaluation({ suggestedStartSec: trimmed.startMs / 1000 + 0.1, suggestedEndSec: null }), null)
     expect(tiny.evaluation!.suggestedStartMs).toBeNull()
     expect(() => clips.applySuggestedTrim(manual.id, tiny.version)).toThrow(/no suggested trim/)
+  })
+})
+
+describe('clips with cuts', () => {
+  it('keeps cuts inside the clip, merges overlaps and drops slivers', () => {
+    expect(cleanCuts([{ start: 5_000, end: 9_000 }, { start: 8_000, end: 12_000 }, { start: 20_000, end: 20_100 }, { start: 0, end: 11_500 }], { startMs: 10_000, endMs: 40_000 })).toEqual([
+      { start: 10_000, end: 12_000 },
+    ])
+    expect(cleanCuts([{ start: 10_000, end: 38_000 }], { startMs: 10_000, endMs: 40_000 })).toBeNull()
   })
 })

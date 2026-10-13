@@ -74,6 +74,24 @@ export interface ClipDraft {
   evaluation?: EvaluationInput | null
   /** Set by `prepare`: the evaluation, checked and with suggested edges snapped. */
   checked?: ClipEvaluation | null
+  /** Parts to cut out (source ms), e.g. dead air picked out in the highlights editor. */
+  cuts?: { start: number; end: number }[]
+}
+
+/** Cuts kept inside the clip, merged where they overlap, tiny ones (< 0.3 s) dropped; null if too little would remain. */
+export function cleanCuts(cuts: { start: number; end: number }[], range: { startMs: number; endMs: number }): { start: number; end: number }[] | null {
+  const sorted = cuts
+    .map((c) => ({ start: Math.max(range.startMs, Math.round(c.start)), end: Math.min(range.endMs, Math.round(c.end)) }))
+    .filter((c) => c.end - c.start >= 300)
+    .sort((a, b) => a.start - b.start)
+  const merged: { start: number; end: number }[] = []
+  for (const c of sorted) {
+    const last = merged.at(-1)
+    if (last && c.start <= last.end) last.end = Math.max(last.end, c.end)
+    else merged.push({ ...c })
+  }
+  const kept = range.endMs - range.startMs - merged.reduce((sum, c) => sum + c.end - c.start, 0)
+  return kept >= CLIP_MIN_MS ? merged : null
 }
 
 /**
@@ -210,10 +228,13 @@ export class ClipService {
       ? checkEvaluation(draft.evaluation, snapped, { words, durationMs: project.durationMs, by: opts.by ?? null, at: this.now().getTime() })
       : null
     const score = checked ? Math.round(checked.total * 10) : draft.score
+    const cuts = draft.cuts?.length ? cleanCuts(draft.cuts, snapped) : []
+    if (cuts === null) return { error: `Less than ${CLIP_MIN_MS / 1000} s would be left after the cuts` }
     return {
       clip: {
         ...snapped,
         checked,
+        cuts,
         title: title.slice(0, 120),
         hook: draft.hook?.trim().slice(0, 160) || null,
         reason: draft.reason?.trim().slice(0, 600) || null,
@@ -256,7 +277,13 @@ export class ClipService {
         score: clip.score ?? null,
         keywords: clip.keywords ?? [],
         evaluation: clip.checked ?? null,
-        edit: defaultEdit({ hook: clip.hook, emojis: clip.emojis }),
+        edit: clip.cuts?.length
+          ? (() => {
+              const edit = defaultEdit({ hook: clip.hook, emojis: clip.emojis })
+              edit.trim.cuts = clip.cuts
+              return edit
+            })()
+          : defaultEdit({ hook: clip.hook, emojis: clip.emojis }),
         origin: extra.origin,
         status: extra.status,
         createdAt: now,
@@ -265,6 +292,23 @@ export class ClipService {
       .returning()
       .get()
     return toClipDto(row)
+  }
+
+  /**
+   * The whole video as one clip, for imports that are clips already (Twitch clips). Approved right away: the user
+   * chose to import it. Does nothing if the project already has one.
+   */
+  createImported(projectId: string, title: string): ClipDto | null {
+    const project = this.db.select().from(projects).where(eq(projects.id, projectId)).get()
+    if (!project?.durationMs) return null
+    const existing = this.db
+      .select()
+      .from(clips)
+      .where(and(eq(clips.projectId, projectId), eq(clips.origin, 'imported')))
+      .get()
+    if (existing) return null
+    const clip = { startMs: 0, endMs: project.durationMs, title: title.trim().slice(0, 120) || 'Twitch clip', keywords: [] }
+    return this.insert(projectId, clip, { origin: 'imported', status: 'approved' })
   }
 
   /** A clip the user made by hand (from a transcript selection). It's approved right away. */

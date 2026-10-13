@@ -42,9 +42,12 @@ export function estimateFindCost(transcriptChars: number, modelId: string): numb
 
 /** What makes a good clip. Shared by the MCP instructions (Claude Code / Desktop) and the in-app "Find clips"; the scoring rubric is CLIP_RUBRIC. */
 export const CLIP_PICKING_RULES = `- Pick moments that work on their own, with no earlier context, that open with a hook: start in medias res, on an intense statement, a burning question or the result first. Good: surprising claims, stories, strong opinions, practical tips, emotional or funny moments, quotable lines. Skip: intros, outros, sponsor reads, "as I said earlier", and anything that trails off.
-- Trim aggressively. Never start on a greeting, "so", "anyway" or a transition; the app also drops opening greetings and filler itself. End right after the payoff.
-- Length: 22–45 s is the sweet spot. Under 15 s rarely has an arc; over 50 s loses viewers unless the story is exceptional (hard limits 3–180 s). Edges snap to word boundaries.
-- For each clip: a title (60 characters or fewer, honest), a hook (the on-screen text for the first seconds, 10 words or fewer), the reason it works, 3–6 keywords from the spoken words (used to highlight captions), and optionally a few emojis for key spoken words.`
+- Open inside the action (an "anti-hook"): no sentence that announces what's coming; the point is clear within 2 seconds. Tension or shock opens better than a calm or happy beat.
+- Lead-in: start 1–3 s (at most 5) before the key moment, so viewers see it coming: the approach and obstacles before a jump or crash, the setup line before a punchline. The key moment should land 1–5 s into the clip; never open on the impact or the climax itself, or the payoff is spent before anyone is invested.
+- Prefer moments where the feeling changes (tension, then shock, then a laugh) over one flat mood; repeated beats are where viewers leave. Leave out repeats, and the streamer talking to chat or asking to follow, subscribe or comment.
+- Trim everything else aggressively. Never start on a greeting, "so", "anyway" or a transition; the app also drops opening greetings and filler itself. End right on the payoff: no wind-down or walking away afterwards; ending a beat early so people rewatch is better than lingering.
+- Length: 22–45 s is the sweet spot. Under 15 s rarely has an arc; over 50 s loses viewers unless the story is exceptional (hard limits 3–180 s). Finishing matters more than length. Edges snap to word boundaries.
+- For each clip: a title (60 characters or fewer, honest, no hashtags, worded differently from the other clips' titles: YouTube treats repeated titles as spam), a hook (the on-screen text for the first seconds, 10 words or fewer, ideally under 6; your own words that react to or point at what's about to happen, not a copy of the speech), the reason it works, 3–6 keywords from the spoken words (used to highlight captions), and optionally a few emojis for key spoken words.`
 
 /**
  * A rough cost for evaluating clips with Claude, in US dollars: per clip about 40 s of transcript, four small

@@ -7,9 +7,9 @@ import type { Word } from './transcripts'
  * first 1–3 seconds, and viewers staying to the last frame. Four pillars, weighted.
  */
 export const PILLARS = [
-  { key: 'hook', label: 'Hook', weight: 0.4, question: 'Does the first 3 s stop the scroll?' },
-  { key: 'pacing', label: 'Pacing', weight: 0.3, question: 'Does every second add something?' },
-  { key: 'payoff', label: 'Payoff', weight: 0.2, question: 'Is the hook’s promise kept?' },
+  { key: 'hook', label: 'Hook', weight: 0.4, question: 'Do the first 3 s drop you into the action and stop the scroll?' },
+  { key: 'pacing', label: 'Pacing', weight: 0.3, question: 'Does every second add something, with the feeling changing?' },
+  { key: 'payoff', label: 'Payoff', weight: 0.2, question: 'Is the hook’s promise kept, ending right on it?' },
   { key: 'standalone', label: 'Standalone', weight: 0.1, question: 'Does it make sense to a stranger?' },
 ] as const
 export type PillarKey = (typeof PILLARS)[number]['key']
@@ -32,14 +32,14 @@ export function lengthAdvice(ms: number): { tone: 'good' | 'ok' | 'warn'; text: 
 }
 
 /** The rubric, shared by the MCP instructions, the in-app finder and the in-app evaluator. */
-export const CLIP_RUBRIC = `Judge every clip like a YouTube Shorts growth strategist. Two things decide a Short: the swipe-away rate (does the viewer scroll on in the first 1–3 seconds?) and completion (do they stay to the last frame?). Score four pillars from 1 to 10:
+export const CLIP_RUBRIC = `Judge every clip like a YouTube Shorts growth strategist. Two numbers decide a Short: how many viewers stay past the first seconds instead of swiping (strong Shorts keep about 80% or more), and average view duration against the length (the best reach 100% or more: watched to the end and partly rewatched). Every second either holds attention or loses it. Score four pillars from 1 to 10:
 
-1. Hook, seconds 0–3 (40%). Stop power: it starts mid-action, with an intense statement or a burning question; never "hey guys", greetings or warm-up. Recognition: a viewer instantly gets who or what it's about. Tension: it opens a loop (the shocking result first, a big mistake, a contrarian fact) that makes them stay to see it closed.
-2. Pacing, second 3 to the end (30%). Density: every second adds something; no dead air, stammering, filler or repetition. Micro-pacing: the story shifts or escalates every 5–7 seconds. Mute test: could it be followed on mute, through on-screen text, gestures, expressions or action, or does it rely entirely on the words?
-3. Payoff (20%). The hook's promise is fully kept (no clickbait that earns "Not interested"). Bonus if the last line flows back into the first, inviting a rewatch.
-4. Standalone (10%). A stranger who never saw the long video understands and enjoys it.
+1. Hook, seconds 0–3 (40%). Stop power: the viewer is dropped straight into the action or story without being told what's coming (an "anti-hook": "he floors it toward the cops…" beats "you won't believe what happened"); the point is clear within 2 seconds. Never "hey guys", greetings, "have you ever wondered", "in this video" or a streamer setting up ("chat, watch this"). Build-up: the key moment (jump, crash, reveal, punchline) lands 1–5 s in, after a short lead-in that shows it coming; a clip that opens on the impact itself gives the payoff away and scores lower. Tension or shock opens better than a calm or happy beat. Recognition: a viewer instantly gets who or what it's about. Tension: it opens a loop (the shocking result first, a big mistake, a contrarian fact) that makes them stay to see it closed.
+2. Pacing, second 3 to the end (30%). Density: every second adds something; no dead air, stammering, filler or repetition. Emotional change: attention follows a change in feeling (tension → shock → laugh → relief); the same beat twice in a row (a repeated joke, reaction, line, sound, or the streamer saying "chat" again and again) is where viewers leave. Micro-pacing: the story shifts or escalates every 5–7 seconds. Calls to action ("subscribe", "follow", "comment below") cost viewers; flag them for trimming. Mute test: could it be followed on mute, through on-screen text, gestures, expressions or action, or does it rely entirely on the words?
+3. Payoff (20%). The hook's promise is fully kept (no clickbait that earns "Not interested"). The clip ends on the payoff, abruptly: no walking away, wind-down, outro or reaction to the reaction afterwards (viewers see the progress bar and leave). Bonus if it invites a rewatch: the last beat flows back into the first, or it cuts a moment into the payoff so people replay it. Rewatches are the strongest signal a Short gets.
+4. Standalone (10%). A stranger who never saw the long video, and doesn't know the game, server or streamer, understands and enjoys it.
 
-Trim aggressively: models tend to include too much context. Start in medias res: cut greetings, intros, "so", "anyway" and transitions. 22–45 s is the sweet spot; under 15 s rarely has an arc; over 50 s loses viewers unless the story is exceptional. When the boundaries could be better, give exact new start and end times.`
+Trim aggressively: models tend to include too much context. Start in medias res: cut greetings, intros, "so", "anyway" and transitions, but keep 1–3 s of build-up before the key moment (suggest an earlier start when a clip opens right on it). End right on the payoff. 22–45 s is the sweet spot; under 15 s rarely has an arc; over 50 s loses viewers unless the story is exceptional. Finishing matters more than length: a 20 s clip watched twice beats a 45 s clip abandoned halfway. When the boundaries could be better, give exact new start and end times.`
 
 /** Weighted 1–10 total, computed here rather than trusted from the model. One decimal. */
 export function evaluationTotal(p: Record<PillarKey, number>): number {
@@ -112,25 +112,33 @@ export const EVALUATION_JSON_SCHEMA = {
   },
 } as const
 
-const GREETING = /^(hey|hi|hello|yo|what'?s up|welcome( back)?|good (morning|afternoon|evening))\b/i
-const GREETING_TAIL = /\b(guys|everyone|everybody|folks|friends|y'?all|channel|video|episode|podcast|back)\b/i
+const AUDIENCE = "(guys|everyone|everybody|folks|friends|y'?all|all|team|people)"
+const WELCOME = `welcome( back)?( to( the| my| our)? (channel|video|podcast|show|episode|stream))?( ${AUDIENCE})?`
+/**
+ * A greeting at the start of a clip, on lower-cased words without punctuation: "hey guys welcome back to the channel",
+ * "hi everyone", "what's up guys", "hello and welcome". A bare "hey" is not enough ("Hey, that's wrong" stays).
+ */
+const GREETING = new RegExp(
+  `^((hey|hi|hello|yo|what'?s up|good (morning|afternoon|evening))( ${AUDIENCE}( and)?( ${WELCOME})?|( and)? ${WELCOME})|${WELCOME})(?= |$)`,
+)
 /** Openers that delay the point; a clip should start on the statement itself. */
 const LEAD_IN = /^(so|okay|ok|alright|well|um+|uh+|erm|ah+|hmm+|yeah|anyway|anyways|and)[,.!?…]*$/i
 
 /**
- * Where a proposed clip should really start: skips a greeting sentence ("Hey guys, welcome back…") and opening
+ * Where a proposed clip should really start: skips a greeting ("Hey guys, welcome back…") and opening
  * filler ("So, um, okay…"). Leaves the start alone when trimming would leave less than 15 s or half the clip.
  */
 export function trimLeadIn(words: Word[], startMs: number, endMs: number): number {
   const inside = words.filter((w) => w.start >= startMs - 50 && w.end <= endMs + 50)
   if (!inside.length) return startMs
   let i = 0
-  // A short greeting sentence at the very start.
-  if (GREETING.test(inside[0]!.text.replace(/^[^\p{L}]+/u, ''))) {
-    const end = inside.findIndex((w, k) => k < 16 && /[.!?…]$/.test(w.text))
-    const sentence = inside.slice(0, end + 1).map((w) => w.text).join(' ')
-    if (end >= 0 && (GREETING_TAIL.test(sentence) || end < 4)) i = end + 1
-  }
+  // A greeting phrase at the very start (checked on the first 12 words).
+  const opening = inside
+    .slice(0, 12)
+    .map((w) => w.text.toLowerCase().replace(/[^\p{L}\p{N}']+/gu, ''))
+    .join(' ')
+  const greeting = GREETING.exec(opening)
+  if (greeting) i = greeting[0].split(' ').length
   // Up to four filler/lead-in words ("so", "um", "okay", "all right").
   for (let n = 0; n < 4 && i < inside.length; n++) {
     if (LEAD_IN.test(inside[i]!.text)) i++

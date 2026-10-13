@@ -36,6 +36,8 @@ function setup(handler: JobHandlers['demo.count'], concurrency = { default: 2 })
       'post.stats': async () => {},
       'clips.find': async () => {},
       'clips.evaluate': async () => {},
+      'data.backup': async () => {},
+      'media.highlights': async () => {},
     },
     workerId: 'test-worker',
     concurrency,

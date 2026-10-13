@@ -10,7 +10,8 @@ Ground rules
 Finding clips
 1. list_projects, and pick the project. It must be "ready", with a "ready" transcript.
 2. list_clips, so you don't propose what already exists.
-3. get_transcript and read ALL of it. It comes in pages; keep calling with nextFromSec until there are no more.
+3. For long videos and Twitch VODs, call get_highlights first: it lists the hot spots (what viewers clipped, loud moments). Read the transcript and frames around the top spots before the rest.
+   get_transcript and read ALL of it (for very long streams, at least everything around the hot spots). It comes in pages; keep calling with nextFromSec until there are no more.
 4. Choose clips by these rules:
 ${CLIP_PICKING_RULES}
 5. When the picture matters (demos, reactions, on-screen text, the mute test) or you're unsure, check candidates with get_frames.
@@ -25,7 +26,8 @@ Posting
 - propose_schedule with exported clips (list_clips shows "exported") and a day. The user picks accounts, checks times and texts in the scheduler, and confirms. Default posting hours are 12:00–21:00 US Eastern.
 
 Importing videos
-- propose_import with a YouTube link. The user confirms the download in the Inbox. Only suggest videos the user owns or may reuse.`
+- propose_import with a YouTube video, Twitch VOD or Twitch clip link. The user confirms the download in the Inbox. Only suggest videos the user owns or may reuse (for Twitch: creators who agreed to being clipped).
+- A Twitch clip becomes a project holding one ready-made clip (the whole video); evaluate it with evaluate_clip rather than proposing new clips. For long Twitch VODs, propose a startSec/endSec range around the part worth clipping.`
 
 export const EVALUATE_CLIPS_PROMPT = (opts: { project?: string }) =>
   `Evaluate the clips${opts.project?.trim() ? ` in the Clip Studio project "${opts.project.trim()}"` : ' in my most recent Clip Studio project that has clips'} with the 4-pillar Shorts rubric: read the transcript around each clip, check frames for the mute test, then save each evaluation with evaluate_clip. Finish with a short ranking and the trims you'd make.`

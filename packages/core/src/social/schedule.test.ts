@@ -110,3 +110,21 @@ describe('scheduled posts', () => {
     expect(() => posts.cancel(p.id)).toThrow(/YouTube Studio/)
   })
 })
+
+describe('editing post text', () => {
+  it('edits waiting posts here, YouTube videos there, and refuses TikTok posts that are up', () => {
+    const yt = posts.create({ renderId, accountId: youtubeId, title: 'Old', description: 'd', scheduledAt: clock.getTime() + HOUR, youtube: { privacy: 'public', tags: ['a'], madeForKids: false } })
+    expect(posts.checkText(yt.id, { title: '  New title #NoPixel ', tags: [' gta ', ''] })).toMatchObject({ target: 'local', title: 'New title #NoPixel', tags: ['gta'] })
+    const saved = posts.saveText(yt.id, { title: 'New', description: 'x', tags: ['gta'], relatedVideo: 'Part 1' })
+    expect(saved.youtube).toMatchObject({ tags: ['gta'], relatedVideo: 'Part 1', privacy: 'public' })
+
+    posts.setStatus(yt.id, 'scheduled', { remoteId: 'vid1' })
+    expect(posts.checkText(yt.id, { title: 'On YouTube' }).target).toBe('youtube')
+    expect(() => posts.checkText(yt.id, { title: '' })).toThrow(/title is required/)
+    expect(() => posts.checkText(yt.id, { title: 'a <b>' })).toThrow(/< or >/)
+
+    const tt = posts.create({ renderId, accountId: tiktokId, title: 'c', tiktok: tiktokOptions })
+    posts.setStatus(tt.id, 'published', { remoteId: '7123' })
+    expect(() => posts.checkText(tt.id, { title: 'x' })).toThrow(/TikTok doesn't allow/)
+  })
+})

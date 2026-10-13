@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PLATFORM_LABELS, POST_STATUS_LABELS, type CalendarPost } from '@clipstudio/core/shared'
+import { PLATFORM_LABELS, POST_STATUS_LABELS, youtubeStudioUrl, type CalendarPost } from '@clipstudio/core/shared'
 
 const route = useRoute()
 const toast = useToast()
@@ -71,6 +71,54 @@ watch(selected, (p) => {
   newTime.value = d.toISOString().slice(0, 16)
 })
 
+// ── Editing the text ─────────────────────────────────────────────────
+const editingText = ref(false)
+const draft = reactive({ title: '', description: '', tags: '', relatedVideo: '' })
+const savingText = ref(false)
+const textError = ref<string | null>(null)
+watch(selected, () => {
+  editingText.value = false
+  textError.value = null
+})
+/** Waiting posts change only here; videos already on YouTube are updated there too. TikTok can't be edited once up. */
+const editWhere = computed<'local' | 'youtube' | null>(() => {
+  const p = selected.value
+  if (!p) return null
+  if (['queued', 'failed', 'missed', 'cancelled'].includes(p.status)) return 'local'
+  if (p.platform === 'youtube' && p.remoteId && (p.status === 'scheduled' || p.status === 'published')) return 'youtube'
+  return null
+})
+function startEdit() {
+  const p = selected.value!
+  Object.assign(draft, { title: p.title, description: p.description, tags: (p.youtube?.tags ?? []).join(', '), relatedVideo: p.youtube?.relatedVideo ?? '' })
+  textError.value = null
+  editingText.value = true
+}
+async function saveText() {
+  const p = selected.value!
+  savingText.value = true
+  textError.value = null
+  try {
+    const updated = await $fetch<CalendarPost>(`/api/posts/${p.id}`, {
+      method: 'PATCH',
+      body: {
+        title: draft.title,
+        description: draft.description,
+        tags: draft.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        relatedVideo: draft.relatedVideo.trim() || null,
+      },
+    })
+    selected.value = { ...p, ...updated }
+    editingText.value = false
+    toast.add({ title: editWhere.value === 'youtube' ? 'Updated on YouTube' : 'Text saved', icon: 'i-lucide-check' })
+    await refresh()
+  } catch (e) {
+    textError.value = (e as { statusMessage?: string }).statusMessage ?? (e as Error).message
+  } finally {
+    savingText.value = false
+  }
+}
+
 async function act(kind: 'cancel' | 'now' | 'reschedule') {
   const p = selected.value
   if (!p) return
@@ -87,7 +135,7 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
     selected.value = { ...p, ...updated }
     await refresh()
   } catch (e) {
-    toast.add({ title: 'That didn’t work', description: (e as Error).message, color: 'error' })
+    toast.add({ title: 'That didn’t work', description: (e as { statusMessage?: string }).statusMessage ?? (e as Error).message, color: 'error' })
   } finally {
     busy.value = null
   }
@@ -169,18 +217,90 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
             <span class="text-muted">{{ new Date(when(selected)).toLocaleString([], { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) }}</span>
           </div>
           <p v-if="selected.error" class="text-error">{{ selected.error }}</p>
-          <div class="space-y-1">
-            <p class="text-xs text-muted">{{ selected.platform === 'youtube' ? 'Title' : 'Caption' }}</p>
-            <p class="whitespace-pre-wrap">{{ selected.title || '(none)' }}</p>
+          <template v-if="!editingText">
+            <div class="space-y-1">
+              <p class="text-xs text-muted">{{ selected.platform === 'youtube' ? 'Title' : 'Caption' }}</p>
+              <p class="whitespace-pre-wrap">{{ selected.title || '(none)' }}</p>
+            </div>
+            <div v-if="selected.description" class="space-y-1">
+              <p class="text-xs text-muted">Description</p>
+              <p class="whitespace-pre-wrap text-muted">{{ selected.description }}</p>
+            </div>
+            <div v-if="selected.youtube?.tags.length" class="space-y-1">
+              <p class="text-xs text-muted">Tags</p>
+              <p class="text-muted">{{ selected.youtube.tags.join(', ') }}</p>
+            </div>
+            <UButton v-if="editWhere" label="Edit text" icon="i-lucide-pencil" color="neutral" variant="outline" size="sm" @click="startEdit" />
+          </template>
+          <div v-else class="space-y-3">
+            <UFormField :label="selected.platform === 'youtube' ? 'Title' : 'Caption'">
+              <UTextarea v-model="draft.title" :rows="2" autoresize class="w-full" />
+            </UFormField>
+            <template v-if="selected.platform === 'youtube'">
+              <UFormField label="Description" help="Hashtags go here; the first 3 show above the title.">
+                <UTextarea v-model="draft.description" :rows="4" autoresize class="w-full" />
+              </UFormField>
+              <UFormField label="Tags" help="Search keywords, separated by commas. Not shown to viewers.">
+                <UInput v-model="draft.tags" class="w-full" />
+              </UFormField>
+              <UFormField label="Related video (reminder)">
+                <UInput v-model="draft.relatedVideo" placeholder="Title or link of the video to link in YouTube Studio" class="w-full" />
+              </UFormField>
+            </template>
+            <UAlert
+              v-if="textError"
+              color="error"
+              variant="subtle"
+              :description="textError"
+              :actions="textError.includes('Accounts') ? [{ label: 'Go to Accounts', to: '/accounts', size: 'xs' }] : undefined"
+            />
+            <div class="flex gap-2">
+              <UButton
+                :label="editWhere === 'youtube' ? 'Save and update on YouTube' : 'Save'"
+                icon="i-lucide-check"
+                size="sm"
+                :loading="savingText"
+                @click="saveText"
+              />
+              <UButton label="Cancel" color="neutral" variant="ghost" size="sm" @click="editingText = false" />
+            </div>
           </div>
-          <div v-if="selected.description" class="space-y-1">
-            <p class="text-xs text-muted">Description</p>
-            <p class="whitespace-pre-wrap text-muted">{{ selected.description }}</p>
+
+          <div v-if="selected.platform === 'youtube' && selected.remoteId" class="space-y-2 rounded-md border border-default p-3">
+            <p v-if="selected.youtube?.relatedVideo" class="text-sm">
+              <span class="text-muted">Related video to set:</span> {{ selected.youtube.relatedVideo }}
+            </p>
+            <p class="text-xs text-muted">
+              Related video, end screens and anything else YouTube's API can't set are done in YouTube Studio. It stays scheduled.
+            </p>
+            <UButton
+              label="Open in YouTube Studio"
+              icon="i-lucide-external-link"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :to="youtubeStudioUrl(selected.remoteId)"
+              target="_blank"
+            />
           </div>
           <div class="flex flex-wrap gap-2">
             <UButton v-if="selected.url" label="Open" icon="i-lucide-external-link" color="neutral" variant="outline" size="sm" :to="selected.url" target="_blank" />
             <UButton label="Open project" icon="i-lucide-folder-open" color="neutral" variant="ghost" size="sm" :to="`/projects/${selected.projectId}`" />
           </div>
+
+          <template v-if="selected.platform === 'youtube' && selected.status === 'scheduled' && selected.remoteId && (selected.scheduledAt ?? 0) > now">
+            <USeparator />
+            <div class="space-y-2">
+              <p class="font-medium">Move the publish time</p>
+              <p class="text-xs text-muted">The video is already on YouTube; the new time is changed there too.</p>
+              <div class="flex flex-wrap items-end gap-2">
+                <UFormField label="New time">
+                  <UInput v-model="newTime" type="datetime-local" size="sm" />
+                </UFormField>
+                <UButton label="Move on YouTube" color="neutral" variant="outline" size="sm" :loading="busy === 'reschedule'" @click="act('reschedule')" />
+              </div>
+            </div>
+          </template>
 
           <template v-if="['queued', 'missed', 'failed', 'cancelled'].includes(selected.status)">
             <USeparator />
@@ -210,7 +330,7 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
             </div>
           </template>
           <p v-else-if="selected.status === 'scheduled'" class="text-xs text-muted">
-            The video is on YouTube as private and goes public at this time, even if the Mac is off. To change it, use YouTube Studio.
+            The video is on YouTube as private and goes public at this time, even if the Mac is off. Edit its text above; for anything else, open YouTube Studio.
           </p>
         </div>
       </template>

@@ -11,6 +11,10 @@ pnpm test         # vitest, all packages
 pnpm typecheck    # every package, including nuxt typecheck
 pnpm build        # production build of apps/web
 pnpm db:generate  # after editing packages/core/src/db/schema.ts (use --name <slug> via drizzle-kit for readable names)
+pnpm test:e2e     # build + Playwright in system Chrome, app on :3100 with e2e/.data (never touches data/)
+pnpm checkup      # setup check (`pnpm doctor` is pnpm's own command, hence the name)
+pnpm fix:sqlite   # after switching Node versions: fetch the matching better-sqlite3 build
+pnpm backup / pnpm restore
 ```
 
 Run `pnpm test` and `pnpm typecheck` before calling a change done.
@@ -24,15 +28,20 @@ Run `pnpm test` and `pnpm typecheck` before calling a change done.
 - **Storage keys, not paths.** Files go through the `Storage` interface; the DB stores keys like `projects/<id>/source.mp4`.
 - **Times are UTC** in the DB; the timezone is stored separately.
 - Server routes stay thin: logic lives in `packages/core` (or `packages/media` for tool wrappers) so the worker and MCP can reuse it.
+- The web app is client-only (`ssr: false`): dates render in the viewer's locale and time zone, no hydration step.
 - Nuxt 4's `useFetch` data is a shallow ref: pass `deep: true` when a form edits its fields in place (`v-model="data.x"`).
 - `@clipstudio/core/shared` is the only core entry the browser may import (no Node/DB deps). Type-only imports are fine anywhere.
 - Secrets stay server-side and out of git. Never print `.env` values.
+- The in-app Guide (`apps/web/app/pages/guide.vue`, components in `components/guide/`) is the user manual. When a feature,
+  label, shortcut or setup step changes, update it too. It reads numbers and names from shared constants where it can.
 
 ## Machine notes
 
 - macOS on Apple Silicon (M1 Pro, 16 GB). Heavy job groups (`transcribe`, `render`) run one at a time.
-- Node 22.19 is installed; Nuxt 4.6 wants 22.21+ or 24 (it warns but runs). better-sqlite3 is pinned to v12 because v13 has no
-  prebuilt binary for Node 22 and Xcode can't compile here.
+- Node 24.21 (Herd's nvm, picked by `.nvmrc`; the user's Terminal switches automatically). Agent shells default to
+  Node 22.19: put `~/Library/Application Support/Herd/config/nvm/versions/node/v24.21.0/bin` first on PATH before
+  running tests or the app. better-sqlite3 (v12, prebuilt only: Xcode can't compile here) is built for one Node version;
+  after a switch, `pnpm fix:sqlite` fetches the matching build (`pnpm rebuild` doesn't). `pnpm checkup` detects it.
 - ffmpeg, yt-dlp and whisper-cpp come from Homebrew; System check (`/system`) reports what's missing.
   Homebrew's yt-dlp pulls in Deno, which yt-dlp needs to solve YouTube's JS challenges.
 - YouTube section downloads (`--download-sections`) fail now and then with "ffmpeg exited with code 8"; the job retry covers it.
@@ -70,6 +79,8 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
   tall) and fills the rest with a face window; `layout.screen` is optional (older clips) and falls back to
   `DEFAULT_SCREEN`. `facecamWindow` places the face window from the face track (face ≈ 40% of its height, zoom ≤ 8).
 - `snapToWords` only moves an edge that falls inside a word; edges in silence stay (visual moments aren't trimmed).
+  It ignores "words" longer than `MAX_REAL_WORD_MS` (2 s): over music, whisper writes things like "Thank you." stretched
+  across 30 s, and snapping to those turned 15 s clips into 40 s ones.
 
 ## Posting (YouTube, TikTok)
 
@@ -80,6 +91,14 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
   `accessToken()` refreshes 2 min before expiry and marks the account `needs_reconnect` when the platform refuses.
 - Posts: `PostService.create` validates, then queues `post.publish`. Errors with `retryable: false` fail without retries
   (no duplicate posts); a TikTok post already uploaded (`status=processing` + `remoteId`) resumes polling only.
+- Editing text after scheduling: `PostService.checkText`/`saveText` + social `editPostText` (`PATCH /api/posts/:id`).
+  Waiting posts change locally; YouTube videos (scheduled/published) are updated via `videos.update` first (needs the
+  `youtube.force-ssl` scope, so older sign-ins reconnect once: `AccountDto.canEditVideos`). TikTok can't be edited once up.
+  Moving a scheduled YouTube video (`reschedulePost`) sets `status.publishAt` via `videos.update` first, then `saveMove`
+  stores it and re-plans the `post.stats` checks. Uploads use category 24 (Entertainment, `YOUTUBE_CATEGORY_ID`) and, by
+  default, no hashtags, tags or description (`suggestPostText`, see docs/shorts-playbook.md).
+  "Related video" isn't in YouTube's API: `youtube.relatedVideo` is a reminder shown next to `youtubeStudioUrl`.
+  Default hashtags: `ScheduleDefaults.hashtags` → `suggestPostText(..., defaultHashtags)` (casing kept, put first).
 - TikTok UX rules followed in `PostModal.vue`: creator info fetched before posting, privacy has no default,
   interaction switches, commercial-content disclosure, music-usage consent line. Unaudited apps: SELF_ONLY + private accounts.
 
@@ -88,6 +107,9 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
 - `shared/schedule.ts` is the maths (browser + server): `zonedToUtc` (Intl-based, DST-safe), `planTimes`
   (edges / centred / custom, round 5 min, seeded jitter, skips passed times today), `scheduleWarnings`.
   Defaults: US audience, America/New_York, 12:00–21:00, edge to edge (settings key `schedule.defaults`).
+- `planDays` splits a batch over days (`perDay`, default 3) and, with `after`, continues from the last waiting post
+  (fills its day when there's room `minGapMin` after it, else the next day). The scheduler picks "after what's already
+  scheduled" by default when the chosen accounts have waiting posts (`queued`/`uploading`/`processing`/`scheduled`).
 - `PostService.createBatch` validates every post then saves all in one transaction (`schedule_batches`).
   YouTube: the job runs now and uploads private + `publishAt` (scheduled posts are always public at the time).
   TikTok: the job's `runAt` is the time. A TikTok post more than 10 min late is `missed`, never posted silently.
@@ -108,7 +130,25 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
   `/api` and `/mcp` requests. There is no MCP token; the app binds to 127.0.0.1. `ALLOWED_HOSTS` adds hosts if ever needed.
 - Test the endpoint with curl: POST JSON-RPC with `accept: application/json, text/event-stream`.
 
+## Twitch (VODs and clips)
+
+- Links: `parseVideoLink` (YouTube video, `twitch.tv/videos/<id>` → id `v<id>`, `twitch.tv/<ch>/clip/<slug>` /
+  `clips.twitch.tv/<slug>` → slug). Same preview/import routes as YouTube (`/api/projects/youtube/*`); projects get
+  `sourceType: 'twitch'` and `sourceMeta.twitch.kind`. yt-dlp handles both; `importRange` records a partial download.
+- Twitch clips import whole; `media.prepare` makes one approved clip with origin `imported` (`createImported`);
+  `sourceMeta.autoEvaluate` (a choice with its cost in the import dialog) queues `clips.evaluate` after transcription.
+- Highlights (`media.highlights`, after prepare for VODs and videos ≥ 10 min): `loudnessCurve` (per-second dBFS from
+  audio.wav) + Helix viewer clips (`TWITCH_CLIENT_ID/SECRET`, app token, `twitchVodClips` filtered by video id, offsets
+  shifted by `importRange`). `findHotSpots` ranks them (viewer clips 65 %, loudness lift 35 %; spots start 3 s early).
+  Loudness only works where a voice rides over the audio: edited videos with a constant music bed give little.
+- Smart import: `/api/projects/twitch/moments` → `groupMoments` (clips within 30 s merged, −60/+30 s context) → one
+  partial-download project per picked moment. MCP: `get_highlights`.
+- Sources: small creators who agreed to being clipped.
+
 ## Clip evaluation (the Shorts rubric)
+
+- [docs/shorts-playbook.md](docs/shorts-playbook.md) is the background (what YouTube measures, hooks, endings, posting,
+  policy), distilled from a Shorts course. Its clip rules are already in `CLIP_RUBRIC` / `CLIP_PICKING_RULES`.
 
 - `shared/evaluation.ts` holds `CLIP_RUBRIC` (4 pillars: hook 40 %, pacing 30 %, payoff 20 %, standalone 10 %, plus the
   mute test), the 22–45 s sweet spot (`lengthAdvice`: warn under 15 s and over 50 s) and `trimLeadIn`. The rubric goes
@@ -117,6 +157,8 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
   arithmetic), snaps suggested edges to words and drops suggestions within 0.3 s. `score` = 10 × total.
   `setEvaluation` doesn't bump the clip version; a suggested trim only moves the clip when the user applies it
   (editor: undoable edit; Inbox: "Approve trimmed" → `applySuggestedTrim`). `evaluationState` says current/trimmed/stale.
+- Lead-in rule (user's standing request): clips start 1–3 s (max 5) before the key moment, which lands 1–5 s in; never
+  open on the impact/climax. It's in `CLIP_PICKING_RULES` and the rubric's hook pillar, so every evaluator applies it.
 - Proposals from models get `trimLeadIn`: an opening greeting sentence and up to four filler words are cut, unless that
   leaves under 15 s or under half the clip. Manual clips are never trimmed.
 - Evaluators: Claude via MCP (`propose_clips` with `evaluation`, `evaluate_clip` for existing clips, `evaluate_clips`
@@ -133,7 +175,17 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
 - `clips.find` runs once (`maxAttempts: 1`): a retry costs money. The UI shows a cost estimate (`estimateFindCost`) before.
 - Tests use fake Anthropic (SSE) and Ollama servers; never call the real API in tests.
 
+## Backups
+
+- `core/src/backup.ts`: SQLite online backup (`$client.backup`) + `secret.key` into `data/backups`; the worker runs
+  `autoBackup` hourly (one snapshot a day, 14 automatic kept; manual and `before-restore` never pruned).
+  `restore` refuses while the app runs (heartbeat or port), validates the file, snapshots first, removes old WAL files.
+- CLI scripts live in `apps/worker/src/cli/`; pnpm runs them from `apps/worker`, so user paths resolve from `INIT_CWD`.
+
 ## Testing notes
+
+- E2E (`e2e/`): the config resets `e2e/.data` once per run (guarded by an env marker, since Playwright reloads the
+  config in workers), symlinks `data/models` for whisper, and generates a `say` + ffmpeg talk with a greeting.
 
 - For speech, make a clip locally: `say -o speech.aiff "…"` plus an ffmpeg test pattern. Big Buck Bunny has no dialogue.
 - Known Whisper quirk: a closing "Thanks for watching." after other speech is dropped (it transcribes fine on its own,

@@ -13,6 +13,8 @@ export interface AppConfig {
   /** Where the app is reached, for OAuth redirects and links. */
   appUrl: string
   /** Platform app credentials from .env; null when not set up. */
+  /** A Twitch developer app (dev.twitch.tv), for reading which moments of a VOD viewers clipped. No user sign-in. */
+  twitch: { clientId: string; clientSecret: string } | null
   social: {
     youtube: { clientId: string; clientSecret: string } | null
     tiktok: { clientId: string; clientSecret: string } | null
@@ -77,6 +79,10 @@ export function getConfig(): AppConfig {
     host: process.env.HOST ?? '127.0.0.1',
     port: Number(process.env.PORT ?? 3000),
     appUrl: process.env.APP_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3000}`,
+    twitch:
+      process.env.TWITCH_CLIENT_ID && process.env.TWITCH_CLIENT_SECRET
+        ? { clientId: process.env.TWITCH_CLIENT_ID, clientSecret: process.env.TWITCH_CLIENT_SECRET }
+        : null,
     social: {
       youtube:
         process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { and, desc, eq, getTableColumns, inArray, isNotNull, isNull } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { ProjectError } from '../errors'
+import { findHotSpots, heatStrip, type HighlightsData, type HotSpot } from '../shared/highlights'
 import { assets, projects, transcripts, type AssetRow, type JobRow, type ProjectRow } from '../db/schema'
 import type { JobQueue } from '../jobs/queue'
 import type { AssetKind, DownloadQuality, ProjectDto, TimeRange, YoutubeMeta } from '../shared/projects'
@@ -55,6 +56,7 @@ export class ProjectService {
       .all()
   }
 
+  /** A project from a YouTube video or a Twitch VOD or clip; the download is queued straight away (the user confirmed it). */
   createFromYoutube(input: {
     url: string
     meta: YoutubeMeta
@@ -65,6 +67,8 @@ export class ProjectService {
     if (input.range && input.range.end <= input.range.start) {
       throw new ProjectError('The end time must be after the start time', 'invalid')
     }
+    // A Twitch clip is already short; it's always imported whole.
+    if (input.meta.twitch?.kind === 'clip') input = { ...input, range: undefined }
     const now = this.now()
     return this.db.transaction((tx) => {
       const row = tx
@@ -72,10 +76,10 @@ export class ProjectService {
         .values({
           id: randomUUID(),
           name: (input.name?.trim() || input.meta.title).slice(0, 200),
-          sourceType: 'youtube',
+          sourceType: input.meta.platform === 'twitch' ? 'twitch' : 'youtube',
           sourceUrl: input.url,
           sourceId: input.meta.videoId,
-          sourceMeta: input.meta,
+          sourceMeta: input.range ? { ...input.meta, importRange: input.range } : input.meta,
           status: 'importing',
           createdAt: now,
           updatedAt: now,
@@ -226,6 +230,32 @@ export class ProjectService {
     }
     await this.storage.delete(projectPrefix(id))
     this.db.delete(projects).where(eq(projects.id, id)).run()
+  }
+
+  /**
+   * The highlights map of a long video or Twitch VOD: hot spots (best first), a heat strip for drawing, and which
+   * signals were available. Null until the highlights job has run.
+   */
+  async highlights(
+    id: string,
+  ): Promise<{ spots: HotSpot[]; strip: number[]; curve: number[]; data: Omit<HighlightsData, 'loudness'> & { seconds: number } } | null> {
+    const project = this.require(id)
+    const asset = this.asset(id, 'highlights')
+    if (!asset) return null
+    const data = JSON.parse((await this.storage.get(asset.storageKey)).toString('utf8')) as HighlightsData
+    const duration = (project.durationMs ?? data.loudness.length * 1000) / 1000
+    const { loudness, ...rest } = data
+    // Per second, for the zoomed range editor (rounded: an 8-hour VOD stays around 100 KB).
+    const curve = heatStrip(data, duration, Math.max(1, Math.ceil(duration))).map((v) => Math.round(v * 100) / 100)
+    return { spots: findHotSpots(data, duration), strip: heatStrip(data, duration), curve, data: { ...rest, seconds: loudness.length } }
+  }
+
+  /** Runs the highlights job (again), e.g. after adding a Twitch app to .env. */
+  requestHighlights(id: string): void {
+    const project = this.require(id)
+    if (project.status !== 'ready') throw new ProjectError('The video has not finished importing', 'conflict')
+    if (this.queue.activeForProject(id).some((j) => j.type === 'media.highlights')) return
+    this.queue.enqueue('media.highlights', { projectId: id }, { projectId: id })
   }
 
   asset(projectId: string, kind: AssetKind): AssetRow | null {

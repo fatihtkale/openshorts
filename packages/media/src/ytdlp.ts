@@ -8,6 +8,11 @@ const COMMON_ARGS = ['--no-playlist', '--no-colors', '--socket-timeout', '30', '
 /** Turns yt-dlp's stderr into a sentence a person can act on. */
 export function friendlyYtdlpError(stderr: string[]): string {
   const text = stderr.join('\n')
+  if (/subscriber.?only|sub.?only|requires? a subscription/i.test(text)) return 'This Twitch VOD is for subscribers only.'
+  if (/clip .*(not found|does not exist)|clip is unavailable/i.test(text)) return 'This Twitch clip was deleted or never existed.'
+  if (/twitch/i.test(text) && /(404|not found|does not exist|has been deleted)/i.test(text)) {
+    return 'This Twitch video is gone: VODs are deleted after a while (often 7–60 days, depending on the channel).'
+  }
   if (/confirm you.?re not a bot/i.test(text)) {
     return 'YouTube asked for a bot check and blocked the download. Wait a while and retry; if it keeps happening, browser cookies will be needed.'
   }
@@ -18,18 +23,41 @@ export function friendlyYtdlpError(stderr: string[]): string {
   if (/video unavailable|not available in your country/i.test(text)) return 'This video is unavailable (removed, blocked, or not available in your country).'
   if (/premieres in|live event will begin/i.test(text)) return 'This video has not premiered yet.'
   if (/unable to download webpage|timed out|network is unreachable|getaddrinfo/i.test(text)) {
-    return 'Could not reach YouTube. Check the internet connection and retry.'
+    return /twitch/i.test(text) ? 'Could not reach Twitch. Check the internet connection and retry.' : 'Could not reach YouTube. Check the internet connection and retry.'
   }
   const last = [...stderr].reverse().find((l) => l.startsWith('ERROR:'))
   return last ? last.replace(/^ERROR:\s*(\[[^\]]+\]\s*[\w-]+:\s*)?/, '') : 'yt-dlp failed without an error message.'
 }
 
-/** Picks what we keep from `yt-dlp --dump-single-json`. */
+/** Picks what we keep from `yt-dlp --dump-single-json`, for YouTube videos and Twitch VODs and clips. */
 export function parseYoutubeInfo(info: Record<string, unknown>): YoutubeMeta {
   const formats = Array.isArray(info.formats) ? (info.formats as { height?: number | null }[]) : []
   const heights = formats.map((f) => f.height ?? 0).filter((h) => h > 0)
   const id = String(info.id)
+  const extractor = String(info.extractor_key ?? info.extractor ?? '').toLowerCase()
+  if (extractor.startsWith('twitch')) {
+    const kind = extractor.includes('clip') ? 'clip' : 'vod'
+    return {
+      // VOD ids come as "v123"; clips by their slug (yt-dlp's display_id) so links and ids match.
+      videoId: kind === 'clip' ? String(info.display_id ?? id) : id.startsWith('v') ? id : `v${id}`,
+      title: String(info.title ?? 'Untitled stream'),
+      channel: (info.uploader as string | undefined) ?? (info.creator as string | undefined) ?? (info.channel as string | undefined) ?? null,
+      durationSec: typeof info.duration === 'number' ? info.duration : null,
+      uploadDate: typeof info.upload_date === 'string' ? info.upload_date : null,
+      thumbnailUrl: typeof info.thumbnail === 'string' ? info.thumbnail : '',
+      license: null,
+      isLive: info.is_live === true || info.live_status === 'is_live',
+      maxHeight: heights.length ? Math.max(...heights) : null,
+      platform: 'twitch',
+      twitch: {
+        kind,
+        channelLogin: (info.uploader_id as string | undefined)?.toLowerCase() ?? null,
+        viewCount: typeof info.view_count === 'number' ? info.view_count : null,
+      },
+    }
+  }
   return {
+    platform: 'youtube',
     videoId: id,
     title: String(info.title ?? 'Untitled video'),
     channel: (info.channel as string | undefined) ?? (info.uploader as string | undefined) ?? null,

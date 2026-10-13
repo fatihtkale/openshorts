@@ -59,6 +59,7 @@ function openAction(project: ProjectDto, kind: 'rename' | 'trash') {
         icon="i-lucide-clapperboard"
         title="No projects yet"
         description="Paste a YouTube link or upload a video above. Each video becomes a project you can cut clips from."
+        :actions="[{ label: 'New here? Read the guide', icon: 'i-lucide-book-open', to: '/guide', color: 'neutral', variant: 'outline' }]"
         variant="naked"
         size="lg"
         class="py-12"

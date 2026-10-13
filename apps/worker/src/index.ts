@@ -4,6 +4,8 @@ import { socialApps } from '@clipstudio/social'
 import {
   AccountService,
   aiCredentials,
+  autoBackup,
+  backupDatabase,
   ClipService,
   createDb,
   getConfig,
@@ -33,16 +35,19 @@ const models = new ModelService(db, config.modelsDir)
 const clips = new ClipService(db)
 const secretKey = loadSecretKey(config.dataDir)
 const deps = {
+  queue,
   projects,
   transcripts,
   models,
   clips,
   proposals: new ProposalService(db, clips, projects),
   ai: () => aiCredentials(db, secretKey),
+  backupNow: () => backupDatabase(db, config.dataDir, 'manual'),
   renders: new RenderService(db, queue),
   posts: new PostService(db, queue),
   accounts: new AccountService(db, secretKey),
   socialApps: socialApps(config),
+  twitchApp: config.twitch,
   storage,
 }
 const workerId = `${hostname()}:${process.pid}`
@@ -90,6 +95,18 @@ const awakeTimer = setInterval(() => {
 }, 60_000)
 keepAwake()
 
+// A database snapshot a day (data/backups, last 14 kept); checked hourly so a Mac that was off catches up.
+async function backupIfDue() {
+  try {
+    const made = await autoBackup(db, config.dataDir)
+    if (made) console.log(`[worker] backed up the database to ${made.name}`)
+  } catch (error) {
+    console.error('[worker] automatic backup failed', error)
+  }
+}
+const backupTimer = setInterval(() => void backupIfDue(), 3_600_000)
+void backupIfDue()
+
 worker.start()
 beat()
 const beatTimer = setInterval(beat, 5_000)
@@ -102,6 +119,7 @@ async function shutdown(signal: string) {
   console.log(`[worker] ${signal}: stopping`)
   clearInterval(beatTimer)
   clearInterval(awakeTimer)
+  clearInterval(backupTimer)
   caffeinate?.kill()
   await worker.stop()
   beat(false)

@@ -21,7 +21,9 @@ export const YOUTUBE_ENDPOINTS: YoutubeEndpoints = {
   upload: 'https://www.googleapis.com/upload/youtube/v3',
 }
 
-export const YOUTUBE_SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly']
+/** Upload, read view counts, and edit a video's title/description/tags after upload (youtube.force-ssl). */
+export const YOUTUBE_EDIT_SCOPE = 'https://www.googleapis.com/auth/youtube.force-ssl'
+export const YOUTUBE_SCOPES = ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly', YOUTUBE_EDIT_SCOPE]
 
 export function youtubeAuthUrl(app: OAuthApp, state: string, verifier: string, ep = YOUTUBE_ENDPOINTS): string {
   const q = new URLSearchParams({
@@ -111,6 +113,10 @@ export function youtubeError(status: number, body: GoogleApiError): SocialError 
     return new SocialError("This app has used up today's YouTube upload quota. It resets at midnight Pacific time.", 'quota', false)
   }
   if (reason === 'uploadLimitExceeded') return new SocialError('This channel has reached its YouTube upload limit for now. Try again later.', 'quota', false)
+  if (reason === 'insufficientPermissions' || reason === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT') {
+    return new SocialError('Reconnect YouTube on the Accounts page to let the app edit videos (a new permission).', 'forbidden', false)
+  }
+  if (reason === 'videoNotFound') return new SocialError('This video is no longer on YouTube.', 'invalid', false)
   if (reason === 'youtubeSignupRequired') return new SocialError('This Google account has no YouTube channel yet. Create one on youtube.com first.', 'forbidden', false)
   if (status === 429 || reason === 'rateLimitExceeded') return new SocialError('YouTube is rate-limiting uploads. Retrying shortly.', 'rate')
   if (status >= 500) return new SocialError(`YouTube had a problem (${message}). Retrying shortly.`, 'server')
@@ -152,6 +158,9 @@ export interface YoutubeVideoMeta {
   madeForKids: boolean
 }
 
+/** Entertainment: the broadest category, so YouTube doesn't narrow who a Short is tested on (docs/shorts-playbook.md). */
+export const YOUTUBE_CATEGORY_ID = '24'
+
 /**
  * Uploads a video with YouTube's resumable protocol: one request opens a session, a second sends the file.
  * Returns the new video's id.
@@ -164,7 +173,7 @@ export async function youtubeUpload(
 ): Promise<{ videoId: string }> {
   const ep = opts.endpoints ?? YOUTUBE_ENDPOINTS
   const body = {
-    snippet: { title: meta.title, description: meta.description, tags: meta.tags, categoryId: '22' },
+    snippet: { title: meta.title, description: meta.description, tags: meta.tags, categoryId: YOUTUBE_CATEGORY_ID },
     status: {
       privacyStatus: meta.publishAt ? 'private' : meta.privacy,
       ...(meta.publishAt ? { publishAt: meta.publishAt } : {}),
@@ -236,4 +245,39 @@ export async function youtubeStats(token: string, videoIds: string[], ep = YOUTU
     out.set(item.id, { views: Number(s.viewCount ?? 0), likes: n(s.likeCount), comments: n(s.commentCount), shares: null })
   }
   return out
+}
+
+/**
+ * Changes an uploaded video's title, description and tags. YouTube replaces the whole snippet, so the category is
+ * sent again (YOUTUBE_CATEGORY_ID). Needs the youtube.force-ssl scope.
+ */
+/**
+ * Moves a scheduled (private) video's publish time. YouTube replaces the whole status part, so privacy and the
+ * made-for-kids answer are sent again. Needs the youtube.force-ssl scope.
+ */
+export async function youtubeSetPublishAt(
+  token: string,
+  videoId: string,
+  publishAt: string,
+  madeForKids: boolean,
+  ep = YOUTUBE_ENDPOINTS,
+): Promise<void> {
+  await api(`${ep.api}/videos?part=status`, token, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: videoId, status: { privacyStatus: 'private', publishAt, selfDeclaredMadeForKids: madeForKids } }),
+  })
+}
+
+export async function youtubeUpdateText(
+  token: string,
+  videoId: string,
+  text: { title: string; description: string; tags: string[] },
+  ep = YOUTUBE_ENDPOINTS,
+): Promise<void> {
+  await api(`${ep.api}/videos?part=snippet`, token, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: videoId, snippet: { title: text.title, description: text.description, tags: text.tags, categoryId: YOUTUBE_CATEGORY_ID } }),
+  })
 }

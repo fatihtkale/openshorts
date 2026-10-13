@@ -4,8 +4,9 @@ import {
   computeInsights,
   formatInZone,
   formatTimecode,
+  MAX_PER_DAY,
   PLATFORM_LABELS,
-  planTimes,
+  planDays,
   scheduleWarnings,
   suggestPostText,
   TIKTOK_PRIVACY_LABELS,
@@ -23,8 +24,8 @@ import {
 } from '@clipstudio/core/shared'
 
 /**
- * The scheduler: pick clips → pick accounts → pick a day → review the timeline → confirm.
- * Nothing is scheduled until the last button.
+ * The scheduler: pick clips → pick accounts → pick when (a day, or right after what's already scheduled; a few posts a
+ * day, the rest on the next days) → review the timeline → confirm. Nothing is scheduled until the last button.
  */
 interface Candidate {
   clip: ClipDto
@@ -45,7 +46,7 @@ const step = ref(0)
 const steps = [
   { title: 'Clips', icon: 'i-lucide-film' },
   { title: 'Accounts', icon: 'i-lucide-at-sign' },
-  { title: 'Day', icon: 'i-lucide-calendar-days' },
+  { title: 'When', icon: 'i-lucide-calendar-days' },
   { title: 'Review', icon: 'i-lucide-list-checks' },
 ]
 
@@ -123,16 +124,54 @@ watch(
   { immediate: true },
 )
 
-// ── Step 3: day ──────────────────────────────────────────────────────
+// ── Step 3: when ─────────────────────────────────────────────────────
 const timeZone = ref('America/New_York')
 const windowStart = ref('12:00')
 const windowEnd = ref('21:00')
 const mode = ref<SpreadMode>('edges')
 const jitterMin = ref(0)
-const minGapMin = ref(90)
+const minGapMin = ref(120)
 const date = ref('')
+const perDay = ref(3)
+/** Start on a picked day, or right after the last post that's already scheduled (filling its day first). */
+const startMode = ref<'date' | 'after'>('date')
+let startTouched = false
 const customTimes = ref<string[]>([])
 const now = useNow(30_000)
+
+// Posts from yesterday to two months ahead: what's already waiting (to continue after) and clashes (to warn about).
+const { data: existing, refresh: refreshExisting } = await useFetch<CalendarPost[]>('/api/posts', {
+  query: { from: Date.now() - 86_400_000, to: Date.now() + 60 * 86_400_000 },
+  server: false,
+  default: () => [],
+})
+const WAITING = ['queued', 'uploading', 'processing', 'scheduled']
+/** The last post still to go out on the picked accounts, and how many posts its day has (most on one account). */
+const lastPost = computed(() => {
+  const ids = new Set(accountIds.value)
+  const waiting = existing.value.filter((p) => p.accountId && ids.has(p.accountId) && WAITING.includes(p.status) && p.scheduledAt && p.scheduledAt > now.value)
+  if (!waiting.length) return null
+  const last = waiting.reduce((a, b) => (b.scheduledAt! > a.scheduledAt! ? b : a))
+  const day = zonedDate(last.scheduledAt!, timeZone.value)
+  const perAccount = new Map<string, number>()
+  for (const p of waiting) {
+    if (zonedDate(p.scheduledAt!, timeZone.value) === day) perAccount.set(p.accountId!, (perAccount.get(p.accountId!) ?? 0) + 1)
+  }
+  return { post: last, time: last.scheduledAt!, day, postsThatDay: Math.max(...perAccount.values()), total: waiting.length }
+})
+// When something is already scheduled, adding to it is the likely plan; the user can still pick a day.
+watch(
+  lastPost,
+  (last) => {
+    if (startTouched) return
+    startMode.value = last ? 'after' : 'date'
+  },
+  { immediate: true },
+)
+function chooseStart(mode: 'date' | 'after') {
+  startTouched = true
+  startMode.value = mode
+}
 
 watch(
   defaults,
@@ -144,6 +183,7 @@ watch(
     mode.value = d.mode
     jitterMin.value = d.jitterMin
     minGapMin.value = d.minGapMin
+    perDay.value = d.perDay ?? 3
     if (!date.value) date.value = zonedDate(Date.now() + 86_400_000, d.timeZone)
   },
   { immediate: true },
@@ -167,36 +207,62 @@ watch(
     const p = proposal.value?.schedule
     if (!p || clipIds.value.length) return
     clipIds.value = p.clipIds.filter((id) => byId.value.has(id))
-    if (p.date) date.value = p.date
+    if (p.date) {
+      date.value = p.date
+      chooseStart('date')
+    }
   },
   { immediate: true },
 )
 
 const plan = computed(() => {
   try {
+    const last = startMode.value === 'after' ? lastPost.value : null
+    const input = {
+      startDate: date.value,
+      timeZone: timeZone.value,
+      windowStart: windowStart.value,
+      windowEnd: windowEnd.value,
+      count: clipIds.value.length,
+      perDay: perDay.value,
+      now: now.value,
+      after: last ? { time: last.time, postsThatDay: last.postsThatDay, minGapMin: minGapMin.value } : undefined,
+    }
     if (mode.value === 'custom' && customTimes.value.length !== clipIds.value.length) {
-      const base = planTimes({ date: date.value, timeZone: timeZone.value, windowStart: windowStart.value, windowEnd: windowEnd.value, count: clipIds.value.length, mode: 'edges', now: now.value })
-      customTimes.value = base.times.map((t) => formatInZone(t, timeZone.value))
+      customTimes.value = planDays({ ...input, mode: 'edges' }).times.map((t) => formatInZone(t, timeZone.value))
     }
     return {
-      ...planTimes({
-        date: date.value,
-        timeZone: timeZone.value,
-        windowStart: windowStart.value,
-        windowEnd: windowEnd.value,
-        count: clipIds.value.length,
+      ...planDays({
+        ...input,
         mode: mode.value,
         jitterMin: jitterMin.value,
         customTimes: customTimes.value,
-        now: now.value,
-        seed: date.value.split('-').reduce((a, b) => a * 31 + Number(b), 7),
+        seed: (last ? last.day : date.value).split('-').reduce((a, b) => a * 31 + Number(b), 7),
       }),
       error: null as string | null,
     }
   } catch (e) {
-    return { times: [] as number[], notes: [] as string[], error: (e as Error).message }
+    return { times: [] as number[], notes: [] as string[], days: [] as string[], error: (e as Error).message }
   }
 })
+/** The plan per day, for the preview. */
+const planByDay = computed(() => {
+  const out: { day: string; times: number[] }[] = []
+  plan.value.times.forEach((t, i) => {
+    const day = plan.value.days[i]!
+    if (out.at(-1)?.day !== day) out.push({ day, times: [] })
+    out.at(-1)!.times.push(t)
+  })
+  return out
+})
+const dayLabel = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
+const shortDay = (ms: number, zone = timeZone.value) =>
+  `${new Date(`${zonedDate(ms, zone)}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} ${formatInZone(ms, zone)}`
+/** A moment in your own time (as on the Calendar), plus the audience's when it differs. */
+const bothZones = (ms: number) =>
+  localZone === timeZone.value
+    ? `${shortDay(ms)} ${zoneLabel(ms, timeZone.value)}`
+    : `${shortDay(ms, localZone)} your time (${shortDay(ms)} ${zoneLabel(ms, timeZone.value)})`
 
 // ── Step 4: review ───────────────────────────────────────────────────
 interface Row {
@@ -210,34 +276,36 @@ const rows = computed<Row[]>(() =>
   ),
 )
 const sortedRows = computed(() => [...rows.value].sort((a, b) => a.time - b.time))
+/** Review rows grouped by day (audience time zone); `index` is the row's place in sortedRows, for its warnings. */
+const rowsByDay = computed(() => {
+  const out: { day: string; rows: (Row & { index: number })[] }[] = []
+  sortedRows.value.forEach((r, index) => {
+    const day = zonedDate(r.time, timeZone.value)
+    if (out.at(-1)?.day !== day) out.push({ day, rows: [] })
+    out.at(-1)!.rows.push({ ...r, index })
+  })
+  return out
+})
 
 // Texts per clip × account, starting from suggestions.
-const texts = reactive<Record<string, { title: string; description: string }>>({})
+const texts = reactive<Record<string, { title: string; description: string; tags: string; relatedVideo: string }>>({})
 function textFor(row: Row) {
   const key = `${row.clipId}:${row.accountId}`
   if (!texts[key]) {
     const clip = byId.value.get(row.clipId)!.clip
     const platform = accounts.value.find((a) => a.id === row.accountId)!.platform
-    const s = suggestPostText(clip, platform)
-    texts[key] = { title: s.title, description: s.description }
+    const s = suggestPostText(clip, platform, defaults.value?.hashtags ?? '')
+    texts[key] = { title: s.title, description: s.description, tags: s.tags.join(', '), relatedVideo: '' }
   }
   return texts[key]!
 }
+const tagList = (text: string) => text.split(',').map((t) => t.trim()).filter(Boolean)
 const editing = ref<string | null>(null)
 
-// Existing posts that day, to warn about clashes.
-const { data: existing } = await useFetch<CalendarPost[]>('/api/posts', {
-  query: computed(() => ({ from: plan.value.times[0] ? plan.value.times[0] - 86_400_000 : 0, to: plan.value.times[0] ? plan.value.times[0] + 2 * 86_400_000 : 1 })),
-  default: () => [],
-  immediate: false,
-  watch: false,
-})
+// Fresh on the When and Review steps, in case something was scheduled or cancelled meanwhile.
 watch(step, (s) => {
-  if (s === 3 && plan.value.times[0]) void refreshExisting()
+  if (s >= 2) void refreshExisting()
 })
-async function refreshExisting() {
-  existing.value = await $fetch<CalendarPost[]>('/api/posts', { query: { from: plan.value.times[0]! - 86_400_000, to: plan.value.times[0]! + 2 * 86_400_000 } })
-}
 
 const warnings = computed(() =>
   scheduleWarnings(
@@ -298,7 +366,7 @@ async function confirm() {
     const created = await $fetch<PostDto[]>('/api/schedule', {
       method: 'POST',
       body: {
-        batch: { date: date.value, timeZone: timeZone.value, windowStart: windowStart.value, windowEnd: windowEnd.value, mode: mode.value, jitterMin: jitterMin.value },
+        batch: { date: plan.value.days[0] ?? date.value, timeZone: timeZone.value, windowStart: windowStart.value, windowEnd: windowEnd.value, mode: mode.value, jitterMin: jitterMin.value },
         proposalId: proposal.value?.id,
         items: sortedRows.value.map((r) => {
           const account = accounts.value.find((a) => a.id === r.accountId)!
@@ -311,7 +379,10 @@ async function confirm() {
             title: text.title,
             description: text.description,
             scheduledAt: r.time,
-            youtube: account.platform === 'youtube' ? { privacy: 'public', tags: clip.keywords.slice(0, 10), madeForKids: false } : undefined,
+            youtube:
+              account.platform === 'youtube'
+                ? { privacy: 'public', tags: tagList(text.tags), madeForKids: false, relatedVideo: text.relatedVideo.trim() || null }
+                : undefined,
             tiktok:
               account.platform === 'tiktok' && t
                 ? {
@@ -330,7 +401,7 @@ async function confirm() {
       },
     })
     toast.add({ title: `${created.length} ${created.length === 1 ? 'post' : 'posts'} scheduled`, icon: 'i-lucide-calendar-check', color: 'success' })
-    await navigateTo(`/calendar?date=${date.value}`)
+    await navigateTo(`/calendar?date=${plan.value.days[0] ?? date.value}`)
   } catch (e) {
     toast.add({ title: 'Could not schedule', description: (e as Error).message, color: 'error' })
   } finally {
@@ -473,9 +544,39 @@ const platformOf = (id: string) => accounts.value.find((a) => a.id === id)!.plat
           <h2 class="font-semibold">When?</h2>
           <p class="text-sm text-muted">Times are planned in your audience's time zone and shown in yours too.</p>
         </template>
+        <div class="mb-5 grid gap-3 sm:grid-cols-2">
+          <button
+            v-for="opt in (['after', 'date'] as const)"
+            :key="opt"
+            type="button"
+            class="rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50"
+            :class="startMode === opt ? 'border-primary ring-2 ring-primary/30' : 'border-default hover:border-accented'"
+            :disabled="opt === 'after' && !lastPost"
+            @click="chooseStart(opt)"
+          >
+            <p class="flex items-center gap-2 text-sm font-medium">
+              <UIcon :name="opt === 'after' ? 'i-lucide-list-end' : 'i-lucide-calendar-days'" class="size-4" />
+              {{ opt === 'after' ? 'After what\'s already scheduled' : 'Start on a day' }}
+            </p>
+            <p v-if="opt === 'date'" class="mt-1 text-xs text-muted">Pick the first day yourself.</p>
+            <template v-else-if="lastPost">
+              <p class="mt-1 text-xs text-muted">
+                Last post: {{ bothZones(lastPost.time) }}, “{{ lastPost.post.clipTitle }}”.
+                <template v-if="plan.times[0]"><br />Next: {{ bothZones(plan.times[0]) }}.</template>
+              </p>
+              <p v-if="localZone !== timeZone" class="mt-1 text-xs text-dimmed">
+                Days count in your audience's time zone: up to {{ perDay }} a day there, so its day can cross midnight here.
+              </p>
+            </template>
+            <p v-else class="mt-1 text-xs text-muted">Nothing scheduled on {{ selectedAccounts.length === 1 ? 'this account' : 'these accounts' }} yet.</p>
+          </button>
+        </div>
         <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="Day">
+          <UFormField v-if="startMode === 'date'" label="First day">
             <UInput v-model="date" type="date" class="w-full" />
+          </UFormField>
+          <UFormField label="Posts per day" help="Per account. More clips continue on the next days.">
+            <UInputNumber v-model="perDay" :min="1" :max="MAX_PER_DAY" class="w-full" />
           </UFormField>
           <UFormField label="Audience time zone">
             <USelect v-model="timeZone" :items="zoneItems" value-key="value" class="w-full" />
@@ -513,9 +614,12 @@ const platformOf = (id: string) => accounts.value.find((a) => a.id === id)!.plat
         <div class="mt-6 rounded-lg bg-elevated p-3">
           <p v-if="plan.error" class="text-sm text-error">{{ plan.error }}</p>
           <template v-else>
-            <p class="mb-2 text-xs text-muted">{{ clipIds.length }} {{ clipIds.length === 1 ? 'post' : 'posts' }} per account:</p>
-            <div class="flex flex-wrap gap-2">
-              <span v-for="t in plan.times" :key="t" class="rounded-md bg-default px-2 py-1 text-sm tabular-nums">
+            <p class="mb-2 text-xs text-muted">
+              {{ clipIds.length }} {{ clipIds.length === 1 ? 'post' : 'posts' }} per account<template v-if="planByDay.length > 1"> over {{ planByDay.length }} days</template>:
+            </p>
+            <div v-for="d in planByDay" :key="d.day" class="flex flex-wrap items-center gap-2 py-1">
+              <span class="w-36 shrink-0 text-sm font-medium">{{ dayLabel(d.day) }}</span>
+              <span v-for="t in d.times" :key="t" class="rounded-md bg-default px-2 py-1 text-sm tabular-nums">
                 {{ formatInZone(t, timeZone) }} <span class="text-xs text-muted">{{ zoneLabel(t, timeZone) }}</span>
                 <span v-if="localZone !== timeZone" class="text-xs text-muted"> · {{ formatInZone(t, localZone) }} yours</span>
               </span>
@@ -527,13 +631,16 @@ const platformOf = (id: string) => accounts.value.find((a) => a.id === id)!.plat
 
       <!-- 4. Review -->
       <template v-else>
-        <UCard :ui="{ body: 'p-0 sm:p-0' }">
+        <UCard v-for="g in rowsByDay" :key="g.day" :ui="{ body: 'p-0 sm:p-0' }">
           <template #header>
-            <h2 class="font-semibold">{{ new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }) }}</h2>
-            <p class="text-sm text-muted">Check each post. Change a time by typing it; move a clip with the arrows.</p>
+            <h2 class="font-semibold">{{ dayLabel(g.day) }}</h2>
+            <p v-if="g === rowsByDay[0]" class="text-sm text-muted">
+              Check each post. Change a time by typing it; move a clip with the arrows.
+              <template v-if="startMode === 'after' && lastPost">Continues after {{ lastPost.total }} {{ lastPost.total === 1 ? 'post' : 'posts' }} already scheduled.</template>
+            </p>
           </template>
           <ul class="divide-y divide-default">
-            <li v-for="(r, i) in sortedRows" :key="`${r.clipId}:${r.accountId}`" class="flex gap-4 p-4 sm:px-6">
+            <li v-for="r in g.rows" :key="`${r.clipId}:${r.accountId}`" class="flex gap-4 p-4 sm:px-6">
               <div class="w-24 shrink-0">
                 <input
                   type="time"
@@ -555,13 +662,17 @@ const platformOf = (id: string) => accounts.value.find((a) => a.id === id)!.plat
                 </div>
                 <template v-if="editing === `${r.clipId}:${r.accountId}`">
                   <UTextarea v-model="textFor(r).title" :rows="2" autoresize class="w-full" :placeholder="platformOf(r.accountId) === 'youtube' ? 'Title' : 'Caption'" />
-                  <UTextarea v-if="platformOf(r.accountId) === 'youtube'" v-model="textFor(r).description" :rows="2" autoresize class="w-full" placeholder="Description" />
+                  <UTextarea v-if="platformOf(r.accountId) === 'youtube'" v-model="textFor(r).description" :rows="2" autoresize class="w-full" placeholder="Description (best left empty for Shorts)" />
+                  <template v-if="platformOf(r.accountId) === 'youtube'">
+                    <UInput v-model="textFor(r).tags" class="w-full" placeholder="Tags, separated by commas (search keywords, not shown)" />
+                    <UInput v-model="textFor(r).relatedVideo" class="w-full" placeholder="Related video to link in YouTube Studio (optional reminder)" />
+                  </template>
                   <UButton label="Done" size="xs" color="neutral" variant="outline" @click="editing = null" />
                 </template>
                 <button v-else type="button" class="block w-full truncate text-left text-sm text-muted hover:text-default" @click="editing = `${r.clipId}:${r.accountId}`">
                   {{ textFor(r).title || '(no caption)' }} <UIcon name="i-lucide-pencil" class="ml-1 size-3" />
                 </button>
-                <UBadge v-for="w in warnings.filter((w) => w.index === i)" :key="w.message" :label="w.message" icon="i-lucide-triangle-alert" color="warning" variant="subtle" size="sm" class="mr-1" />
+                <UBadge v-for="w in warnings.filter((w) => w.index === r.index)" :key="w.message" :label="w.message" icon="i-lucide-triangle-alert" color="warning" variant="subtle" size="sm" class="mr-1" />
               </div>
               <div v-if="selectedAccounts[0]?.id === r.accountId" class="flex flex-col gap-1">
                 <UButton icon="i-lucide-chevron-up" color="neutral" variant="ghost" size="xs" aria-label="Earlier slot" @click="move(r.clipId, -1)" />

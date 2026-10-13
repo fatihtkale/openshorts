@@ -83,6 +83,18 @@ export const jobDefinitions = {
     maxAttempts: 1,
     payload: z.object({ projectId: z.string(), clipIds: z.array(z.string()).min(1).max(20) }),
   },
+  'media.highlights': {
+    label: 'Find highlights',
+    group: 'default',
+    maxAttempts: 2,
+    payload: z.object({ projectId: z.string() }),
+  },
+  'data.backup': {
+    label: 'Back up the database',
+    group: 'default',
+    maxAttempts: 2,
+    payload: z.object({}),
+  },
   'models.download': {
     label: 'Download speech model',
     group: 'download',

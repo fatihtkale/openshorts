@@ -1,6 +1,6 @@
 # Clip Studio
 
-Turns long videos into short vertical clips with animated captions, and schedules them to TikTok and YouTube.
+Turns long videos (YouTube, Twitch VODs and clips, or files) into short vertical clips with animated captions, and schedules them to TikTok and YouTube.
 Runs locally on a Mac. Claude connects over MCP and does the AI work; you confirm everything in the app.
 
 The full plan is in [PLAN.md](PLAN.md).
@@ -13,9 +13,11 @@ Requirements: macOS, Node 22.21+ (Node 24 recommended), pnpm 10, Homebrew.
 brew install ffmpeg yt-dlp whisper-cpp
 cp .env.example .env
 pnpm install
+pnpm checkup
 pnpm dev
 ```
 
+`pnpm checkup` says what's missing and how to fix it (it never changes anything).
 Open http://127.0.0.1:3000 and go to **System check**. It shows what's installed and has a test job
 for checking that the background worker runs.
 
@@ -35,6 +37,18 @@ Claude can read everything and propose clips or imports; you approve them in the
 | `pnpm typecheck` | Type-checks every package |
 | `pnpm build` / `pnpm start` | Production build of the web app; `start` runs it with the worker |
 | `pnpm db:generate` | Creates a migration after you change `packages/core/src/db/schema.ts` |
+| `pnpm checkup` | Checks this Mac's setup: Node, tools, .env (set or not, never values), disk, models, backups |
+| `pnpm backup [--media] [--to <folder>]` | Snapshot of the database and secret key into `data/backups` (or a folder); `--media` also copies videos |
+| `pnpm fix:sqlite` | After switching Node versions: fetches the database module built for the new one |
+| `pnpm restore [snapshot]` | With the app stopped: lists snapshots, or restores one after asking (saves the current state first) |
+| `pnpm test:e2e` | Builds, then runs browser tests in your Chrome against a separate copy on :3100 with empty data |
+
+## Backups
+
+While the app runs, the worker snapshots the database once a day into `data/backups` and keeps the last 14
+(manual and pre-restore snapshots are kept until you delete them). The snapshot folder also holds `secret.key`,
+which unlocks connected accounts and the Anthropic key. Videos aren't in the snapshots: copy them with
+`pnpm backup --media --to /Volumes/YourDrive`, or back up `data/` with Time Machine.
 
 ## Layout
 

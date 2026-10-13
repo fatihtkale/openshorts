@@ -2,7 +2,7 @@ import {
   DOWNLOAD_QUALITIES,
   MUTE_TEST,
   ProjectError,
-  parseYoutubeUrl,
+  parseVideoLink,
   searchWords,
   toSentences,
   type ClipService,
@@ -223,6 +223,36 @@ export function createMcpServer(deps: McpDeps): McpServer {
   )
 
   server.registerTool(
+    'get_highlights',
+    {
+      title: 'Find the hot spots of a long video',
+      description:
+        'For long videos and Twitch VODs: the moments worth clipping, best first, from what viewers clipped on Twitch (with views) and sudden loud moments (shouting, laughter, hype). Each spot already starts 3 s before the moment. Use it before reading the whole transcript of a long stream, then read the transcript around the top spots.',
+      inputSchema: { projectId: z.string(), limit: z.number().int().min(1).max(40).optional().describe('Default 20.') },
+      annotations: { readOnlyHint: true },
+    },
+    ({ projectId, limit }) =>
+      guard(async () => {
+        const result = await projects.highlights(projectId)
+        if (!result) return ok('No highlights map yet. It is made automatically for Twitch VODs and videos over 10 minutes once they are ready.')
+        const signals = [
+          `loudness for ${clock(result.data.seconds * 1000)}`,
+          {
+            ok: `${result.data.viewerClips.length} viewer clips from Twitch`,
+            none: 'no viewer clips were made from this VOD',
+            'no-keys': 'viewer clips unavailable (no Twitch app in .env)',
+            'not-twitch': 'not a Twitch VOD',
+            error: `viewer clips failed: ${result.data.viewerClipsError ?? 'unknown error'}`,
+          }[result.data.viewerClipsStatus],
+        ]
+        const lines = result.spots.slice(0, limit ?? 20).map(
+          (s, i) => `${i + 1}. ${sec(s.startSec * 1000)}–${sec(s.endSec * 1000)} s (peak ${sec(s.peakSec * 1000)} s, score ${s.score}): ${s.reasons.join('; ')}`,
+        )
+        return ok([`Signals: ${signals.join(', ')}.`, lines.length ? lines.join('\n') : 'No clear hot spots found.'].join('\n'))
+      }),
+  )
+
+  server.registerTool(
     'list_clips',
     {
       title: 'List clips',
@@ -357,9 +387,9 @@ export function createMcpServer(deps: McpDeps): McpServer {
     {
       title: 'Propose a YouTube import',
       description:
-        'Suggests downloading a YouTube video as a new project. The user sees the title, length and quality in the Inbox and confirms the download there.',
+        'Suggests downloading a YouTube video, Twitch VOD or Twitch clip as a new project. The user sees the title, length and quality in the Inbox and confirms the download there. For long Twitch VODs, suggest a startSec/endSec range around the part worth clipping.',
       inputSchema: {
-        url: z.string().describe('A YouTube video link.'),
+        url: z.string().describe('A YouTube video, Twitch VOD (twitch.tv/videos/…) or Twitch clip link.'),
         quality: z.enum(DOWNLOAD_QUALITIES).optional().describe('Default 1080.'),
         startSec: z.number().min(0).optional().describe('Only import from here.'),
         endSec: z.number().positive().optional().describe('Only import up to here.'),
@@ -368,12 +398,12 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
     ({ url, quality, startSec, endSec, note }) =>
       guard(async () => {
-        const parsed = parseYoutubeUrl(url)
-        if (!parsed) return fail('That is not a YouTube video link.')
+        const parsed = parseVideoLink(url)
+        if (!parsed) return fail('That is not a YouTube video or Twitch VOD/clip link.')
         const meta = await fetchYoutubeInfo(parsed.url, AbortSignal.timeout(45_000))
         if (meta.isLive) return fail('This is a live stream or upcoming premiere. It can be imported after it ends.')
         const range =
-          startSec !== undefined || endSec !== undefined
+          parsed.kind !== 'clip' && (startSec !== undefined || endSec !== undefined)
             ? { start: startSec ?? 0, end: endSec ?? meta.durationSec ?? Number.MAX_SAFE_INTEGER }
             : undefined
         const existing = projects.findByYoutubeId(meta.videoId)

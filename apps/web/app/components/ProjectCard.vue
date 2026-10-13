@@ -34,8 +34,8 @@ const menu = computed<DropdownMenuItem[]>(() => [
           {{ formatDuration(project.durationMs) }}
         </span>
         <UBadge
-          v-if="project.sourceType === 'youtube'"
-          icon="i-lucide-youtube"
+          v-if="project.sourceType === 'youtube' || project.sourceType === 'twitch'"
+          :icon="project.sourceType === 'twitch' ? 'i-simple-icons-twitch' : 'i-lucide-youtube'"
           color="neutral"
           variant="solid"
           size="sm"

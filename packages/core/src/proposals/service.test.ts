@@ -55,6 +55,9 @@ describe('clip helpers', () => {
     // 1.2 s is inside w2 (1000–1400); 9.1 s is between w18 (9000–9400) and w19.
     expect(snapToWords(words, 1200, 9100, 60_000)).toEqual({ startMs: 900, endMs: 9650 })
     expect(snapToWords([], 1200, 9100, 5000)).toEqual({ startMs: 1200, endMs: 5000 })
+    // Whisper over music: one "word" stretched over 30 s. Edges inside it stay put instead of growing the clip.
+    const song = [{ text: 'Thank', start: 20_000, end: 21_000, p: 0.3 }, { text: 'you.', start: 21_000, end: 51_000, p: 0.2 }]
+    expect(snapToWords(song, 25_000, 40_000, 60_000)).toEqual({ startMs: 25_000, endMs: 40_000 })
   })
 
   it('measures overlap against the shorter range', () => {

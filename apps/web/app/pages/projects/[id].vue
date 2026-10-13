@@ -73,22 +73,30 @@ onBeforeUnmount(() => cancelAnimationFrame(frame))
 function seek(ms: number) {
   if (!video.value) return
   stopAtMs = null
+  skips = []
   video.value.currentTime = ms / 1000
   syncTime()
 }
 
-// Playing a clip: start at its first word and pause at its end.
+// Playing a clip: start at its first word and pause at its end, jumping over any cut-out parts.
 let stopAtMs: number | null = null
-function playRange(startMs: number, endMs: number) {
+let skips: { start: number; end: number }[] = []
+function playRange(startMs: number, endMs: number, cuts: { start: number; end: number }[] = []) {
   if (!video.value) return
-  video.value.currentTime = startMs / 1000
+  skips = [...cuts].sort((a, b) => a.start - b.start)
+  const first = skips.find((c) => c.start <= startMs && c.end > startMs)
+  video.value.currentTime = (first ? first.end : startMs) / 1000
   stopAtMs = endMs
   void video.value.play()
   video.value.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
 }
 watch(currentMs, (ms) => {
-  if (stopAtMs !== null && ms >= stopAtMs) {
+  if (stopAtMs === null) return
+  const inCut = skips.find((c) => ms >= c.start && ms < c.end - 30)
+  if (inCut && video.value) video.value.currentTime = inCut.end / 1000
+  else if (ms >= stopAtMs) {
     stopAtMs = null
+    skips = []
     video.value?.pause()
   }
 })
@@ -108,8 +116,9 @@ const details = computed(() => {
     { label: 'Frame rate', value: p.fps ? `${Math.round(p.fps * 100) / 100} fps` : '' },
     { label: 'Sound', value: p.hasAudio === null ? '' : p.hasAudio ? 'Yes' : 'No audio track' },
   ]
-  if (p.sourceType === 'youtube') {
-    rows.push({ label: 'Source', value: p.sourceMeta?.channel ? `YouTube · ${p.sourceMeta.channel}` : 'YouTube', href: p.sourceUrl ?? undefined })
+  if (p.sourceType === 'youtube' || p.sourceType === 'twitch') {
+    const site = p.sourceType === 'twitch' ? (p.sourceMeta?.twitch?.kind === 'clip' ? 'Twitch clip' : 'Twitch VOD') : 'YouTube'
+    rows.push({ label: 'Source', value: p.sourceMeta?.channel ? `${site} · ${p.sourceMeta.channel}` : site, href: p.sourceUrl ?? undefined })
   } else {
     rows.push({ label: 'Source', value: 'Uploaded file' })
   }
@@ -198,6 +207,7 @@ const details = computed(() => {
               @pause="stopTicking"
             />
           </div>
+          <HighlightsPanel v-if="project.status === 'ready'" :project="project" @play="playRange" />
           <ProjectClips :project="project" @play="playRange" />
           <UCard>
             <dl class="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">

@@ -1,4 +1,5 @@
 export * from './ai'
+export * from './backup'
 export * from './clips/service'
 export * from './config'
 export * from './crypto'

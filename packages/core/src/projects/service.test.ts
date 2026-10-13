@@ -7,6 +7,7 @@ import type { YoutubeMeta } from '../shared/projects'
 import { LocalStorage } from '../storage'
 import { createTestDb } from '../testing'
 import { ProjectError } from '../errors'
+import { ClipService } from '../clips/service'
 import { ProjectService } from './service'
 
 const meta: YoutubeMeta = {
@@ -27,6 +28,7 @@ let clock: Date
 let storage: LocalStorage
 let queue: JobQueue
 let projects: ProjectService
+let clips: ClipService
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'clipstudio-projects-'))
@@ -35,6 +37,7 @@ beforeEach(async () => {
   clock = new Date('2026-10-12T10:00:00Z')
   queue = new JobQueue(db, () => clock)
   projects = new ProjectService(db, queue, storage)
+  clips = new ClipService(db)
 })
 
 afterEach(async () => {
@@ -136,5 +139,46 @@ describe('Trash', () => {
     await projects.purge(row.id)
     expect(projects.get(row.id)).toBeNull()
     expect(await storage.list(`projects/${row.id}`)).toEqual([])
+  })
+})
+
+describe('Twitch import', () => {
+  const clipMeta: YoutubeMeta = {
+    ...meta,
+    videoId: 'BraveTastyOtter',
+    title: 'No way he hit that',
+    durationSec: 28,
+    platform: 'twitch',
+    twitch: { kind: 'clip', channelLogin: 'somestreamer', viewCount: 1200 },
+    autoEvaluate: true,
+  }
+
+  it('imports a Twitch clip whole and makes it one approved clip once ready', () => {
+    const row = projects.createFromYoutube({ url: 'https://clips.twitch.tv/BraveTastyOtter', meta: clipMeta, quality: '1080', range: { start: 3, end: 9 } })
+    expect(row.sourceType).toBe('twitch')
+    expect(row.sourceMeta?.autoEvaluate).toBe(true)
+    // A clip is never cut down at import.
+    const download = queue.activeForProject(row.id).find((j) => j.type === 'ingest.download')!
+    expect((download.payload as { range?: unknown }).range).toBeUndefined()
+
+    projects.sourceReady(row.id, `projects/${row.id}/source.mp4`, 10, 'video/mp4')
+    projects.markReady(row.id, { durationMs: 28_000, width: 1920, height: 1080, fps: 60, hasAudio: true })
+    const made = clips.createImported(row.id, row.name)!
+    expect(made).toMatchObject({ origin: 'imported', status: 'approved', startMs: 0, endMs: 28_000, title: 'No way he hit that' })
+    // Running prepare again (a retry) doesn't make a second one.
+    expect(clips.createImported(row.id, row.name)).toBeNull()
+
+    // A clip picked in the highlights editor keeps the dead air it cut out.
+    const shaped = clips.createManual(row.id, { startMs: 2_000, endMs: 26_000, title: 'Funny bit', cuts: [{ start: 8_000, end: 14_000 }] })
+    expect(shaped.edit.trim.cuts).toEqual([{ start: 8_000, end: 14_000 }])
+    expect(() => clips.createManual(row.id, { startMs: 2_000, endMs: 8_000, title: 'x', cuts: [{ start: 2_000, end: 7_000 }] })).toThrow(/would be left/)
+  })
+
+  it('keeps the part of a VOD that was asked for', () => {
+    const vod = { ...clipMeta, videoId: 'v42', durationSec: 14_400, twitch: { kind: 'vod' as const, channelLogin: 'somestreamer', viewCount: 9 } }
+    const row = projects.createFromYoutube({ url: 'https://www.twitch.tv/videos/42', meta: vod, quality: '720', range: { start: 3600, end: 4200 } })
+    const download = queue.activeForProject(row.id).find((j) => j.type === 'ingest.download')!
+    expect((download.payload as { range?: unknown }).range).toEqual({ start: 3600, end: 4200 })
+    expect(projects.findByYoutubeId('v42')).toHaveLength(1)
   })
 })

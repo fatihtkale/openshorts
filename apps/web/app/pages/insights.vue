@@ -21,11 +21,15 @@ onJobStatusChange((job) => {
 
 // One filter row scopes every number on the page.
 const platform = ref<'all' | 'youtube' | 'tiktok'>('all')
-const platformItems = [
-  { label: 'All', value: 'all' },
-  { label: 'YouTube', value: 'youtube' },
-  { label: 'TikTok', value: 'tiktok' },
-]
+// Only platforms that have posts get a tab; with one platform there's nothing to filter.
+const platformItems = computed(() => {
+  const used = new Set(data.value.posts.map((p) => p.platform))
+  return [
+    { label: 'All', value: 'all' },
+    ...(used.has('youtube') ? [{ label: 'YouTube', value: 'youtube' }] : []),
+    ...(used.has('tiktok') ? [{ label: 'TikTok', value: 'tiktok' }] : []),
+  ]
+})
 const posts = computed(() => data.value.posts.filter((p) => platform.value === 'all' || p.platform === platform.value))
 const insights = computed(() => (defaults.value ? computeInsights(posts.value, defaults.value) : null))
 const zone = computed(() => (defaults.value ? zoneLabel(Date.now(), defaults.value.timeZone) : ''))
@@ -77,7 +81,7 @@ const when = (ms: number) => new Date(ms).toLocaleString([], { day: 'numeric', m
   <PageShell title="Insights">
     <div class="mx-auto w-full max-w-5xl space-y-6">
       <div class="flex flex-wrap items-center gap-3">
-        <UTabs v-model="platform" :items="platformItems" :content="false" size="sm" class="w-auto" />
+        <UTabs v-if="platformItems.length > 2" v-model="platform" :items="platformItems" :content="false" size="sm" class="w-auto" />
         <p class="text-xs text-muted">Views are read 2 days and 7 days after a post goes live.</p>
       </div>
 

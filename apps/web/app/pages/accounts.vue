@@ -127,9 +127,12 @@ async function disconnect() {
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium">{{ a.displayName }}</p>
               <p class="text-xs text-muted">{{ a.username ? `@${a.username.replace(/^@/, '')}` : 'Connected' }}</p>
+              <p v-if="a.platform === 'youtube' && a.status === 'connected' && a.canEditVideos === false" class="text-xs text-warning">
+                Reconnect once to let the app edit titles and descriptions of uploaded videos.
+              </p>
             </div>
             <UButton
-              v-if="a.status === 'needs_reconnect'"
+              v-if="a.status === 'needs_reconnect' || (a.platform === 'youtube' && a.canEditVideos === false)"
               label="Reconnect"
               icon="i-lucide-refresh-cw"
               color="warning"

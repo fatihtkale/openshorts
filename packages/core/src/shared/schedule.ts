@@ -14,6 +14,10 @@ export interface ScheduleDefaults {
   jitterMin: number
   /** Warn when two posts to the same account are closer than this. */
   minGapMin: number
+  /** Hashtags put first in every new post's description (e.g. "#NoPixel #GTARP"); the first 3 show above the title. */
+  hashtags: string
+  /** At most this many posts per account per day; more clips continue on the next days. */
+  perDay: number
 }
 
 /**
@@ -26,8 +30,13 @@ export const DEFAULT_SCHEDULE: ScheduleDefaults = {
   windowEnd: '21:00',
   mode: 'edges',
   jitterMin: 0,
-  minGapMin: 90,
+  minGapMin: 120,
+  hashtags: '',
+  perDay: 3,
 }
+
+/** Most posts per account per day the scheduler offers. */
+export const MAX_PER_DAY = 12
 
 export const COMMON_TIME_ZONES = [
   'America/New_York',
@@ -221,4 +230,87 @@ export function scheduleWarnings(
     }
   })
   return out
+}
+
+/** "YYYY-MM-DD" plus `n` days. */
+export function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number]
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}
+
+export interface DaysInput extends Omit<PlanInput, 'date' | 'customTimes'> {
+  /** The first day (YYYY-MM-DD in the audience time zone). */
+  startDate: string
+  /** At most this many posts a day; the rest continue on the following days. */
+  perDay: number
+  /** "HH:MM" per post, on the day it falls on (mode 'custom'). */
+  customTimes?: string[]
+  /**
+   * Continue after what's already scheduled: the last post's time and how many posts its day already has.
+   * That day is filled up first (no closer than `minGapMin` after the last post), then the next days.
+   */
+  after?: { time: number; postsThatDay: number; minGapMin: number }
+}
+
+export interface DaysResult extends PlanResult {
+  /** The day (YYYY-MM-DD) of each post, in order. */
+  days: string[]
+}
+
+/**
+ * When to post `count` items over as many days as it takes, `perDay` at most a day, each day spread like `planTimes`.
+ * With `after`, it picks up where the existing schedule stops instead of starting on `startDate`.
+ */
+export function planDays(input: DaysInput): DaysResult {
+  const notes: string[] = []
+  const times: number[] = []
+  const days: string[] = []
+  if (input.count <= 0) return { times, notes, days }
+  const perDay = Math.max(1, Math.floor(input.perDay))
+  const startMin = parseClock(input.windowStart)
+  const endMin = parseClock(input.windowEnd)
+  if (endMin <= startMin) throw new Error('The window has to end after it starts')
+
+  let date = input.startDate
+  let room = perDay
+  let windowStart = input.windowStart
+  if (input.after) {
+    // The rest of the last post's day, if there's room for another post in the window after it.
+    date = zonedDate(input.after.time, input.timeZone)
+    const p = zonedParts(input.after.time, input.timeZone)
+    const next = Math.ceil((p.hour * 60 + p.minute + input.after.minGapMin) / 5) * 5
+    room = perDay - input.after.postsThatDay
+    if (room > 0 && next <= endMin) windowStart = formatClock(Math.max(startMin, next))
+    else {
+      date = addDays(date, 1)
+      room = perDay
+    }
+  }
+
+  let done = 0
+  for (let guard = 0; done < input.count && guard < 400; guard++) {
+    const n = Math.min(room, input.count - done)
+    try {
+      const plan = planTimes({
+        ...input,
+        date,
+        windowStart,
+        count: n,
+        customTimes: input.customTimes?.slice(done, done + n),
+        seed: (input.seed ?? 7) + guard * 101,
+      })
+      times.push(...plan.times)
+      days.push(...plan.times.map(() => date))
+      notes.push(...plan.notes)
+      done += n
+    } catch (error) {
+      // Today's window is over: start tomorrow instead. Anything else is the user's input to fix.
+      if (!/already passed/.test((error as Error).message) || done > 0) throw error
+      notes.push(`Starts ${addDays(date, 1)} because today's window has passed.`)
+    }
+    date = addDays(date, 1)
+    room = perDay
+    windowStart = input.windowStart
+  }
+  return { times, notes, days }
 }

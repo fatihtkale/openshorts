@@ -7,7 +7,8 @@ import type { HandlerDeps, JobHandler } from './index'
  * Reads the source's length, size and frame rate, grabs a cover image,
  * and writes a 720p preview plus 16 kHz audio for transcription.
  */
-export function createPrepareHandler({ projects, storage, transcripts, models }: HandlerDeps): JobHandler<'media.prepare'> {
+export function createPrepareHandler(deps: HandlerDeps): JobHandler<'media.prepare'> {
+  const { projects, storage, transcripts, models, clips } = deps
   return async ({ projectId }, ctx) => {
     const source = projects.asset(projectId, 'source')
     if (!source) throw new Error('The source video is missing.')
@@ -54,6 +55,15 @@ export function createPrepareHandler({ projects, storage, transcripts, models }:
       hasAudio: info.hasAudio,
     })
     ctx.log(`ready (${info.width}x${info.height} @ ${info.fps} fps, encoder ${encoder})`)
+
+    // A Twitch clip is a clip already: the whole video becomes one (the user chose it by importing it).
+    const project = projects.require(projectId)
+    if (project.sourceMeta?.twitch?.kind === 'clip') clips.createImported(projectId, project.name)
+
+    // Long videos and Twitch VODs get a highlights map (loud moments, what viewers clipped).
+    if (info.hasAudio && (project.sourceMeta?.twitch?.kind === 'vod' || info.durationMs >= 10 * 60_000)) {
+      deps.queue.enqueue('media.highlights', { projectId }, { projectId })
+    }
 
     // Face analysis (for automatic framing) and transcription start on their own.
     projects.requestFaces(projectId)

@@ -8,7 +8,8 @@ import type { Word } from './transcripts'
 export const CLIP_STATUSES = ['proposed', 'approved', 'rejected'] as const
 export type ClipStatus = (typeof CLIP_STATUSES)[number]
 
-export const CLIP_ORIGINS = ['claude', 'manual'] as const
+/** claude: suggested by an AI; manual: made by hand; imported: the whole video is the clip (a Twitch clip). */
+export const CLIP_ORIGINS = ['claude', 'manual', 'imported'] as const
 export type ClipOrigin = (typeof CLIP_ORIGINS)[number]
 
 /** Hard limits for a clip; the sweet spot (22–45 s) and its warnings live in `evaluation.ts`. */
@@ -163,7 +164,14 @@ export interface ProposalDto {
  * Keeps clip edges from cutting a word in half: an edge that lands inside a word moves out to include all of it,
  * with a little breathing room. Edges in silence stay where they are, so footage without speech isn't trimmed away.
  */
-export function snapToWords(words: Word[], startMs: number, endMs: number, durationMs: number): { startMs: number; endMs: number } {
+/**
+ * Spoken words are short; a "word" longer than this is Whisper hearing music or noise (it writes things like
+ * "Thank you." stretched over 30 s of a song). Clip edges never snap to those, or a 15 s clip could grow to a minute.
+ */
+export const MAX_REAL_WORD_MS = 2_000
+
+export function snapToWords(allWords: Word[], startMs: number, endMs: number, durationMs: number): { startMs: number; endMs: number } {
+  const words = allWords.filter((w) => w.end - w.start <= MAX_REAL_WORD_MS)
   let start = Math.max(0, startMs)
   let end = Math.min(durationMs, endMs)
   const atStart = words.find((w) => w.start < start && w.end > start)

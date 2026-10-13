@@ -16,6 +16,8 @@ export interface AccountDto {
   status: 'connected' | 'needs_reconnect'
   createdAt: number
   updatedAt: number
+  /** YouTube: whether the sign-in allows editing uploaded videos (older sign-ins need a reconnect). */
+  canEditVideos?: boolean
 }
 
 /**
@@ -42,6 +44,16 @@ export interface YoutubePostOptions {
   privacy: YoutubePrivacy
   tags: string[]
   madeForKids: boolean
+  /**
+   * A reminder only: the video to set as "Related video" in YouTube Studio. YouTube's API can't set it, so the app
+   * shows it next to the "Open in YouTube Studio" button.
+   */
+  relatedVideo?: string | null
+}
+
+/** The video's edit page in YouTube Studio (related video, end screens, anything the API can't set). */
+export function youtubeStudioUrl(videoId: string): string {
+  return `https://studio.youtube.com/video/${encodeURIComponent(videoId)}/edit`
 }
 
 export interface TiktokPostOptions {
@@ -127,13 +139,37 @@ export function hashtags(keywords: string[], extra: string[] = []): string[] {
   return [...new Set(tags)].slice(0, 8).map((t) => `#${t}`)
 }
 
-/** First drafts of the text for a post, from what's known about the clip. */
-export function suggestPostText(clip: { title: string; hook: string | null; keywords: string[] }, platform: Platform) {
-  const tags = hashtags(clip.keywords, platform === 'youtube' ? ['shorts'] : [])
-  if (platform === 'youtube') {
-    const title = clip.title.length + 8 <= POST_LIMITS.youtubeTitle ? `${clip.title} #Shorts` : clip.title.slice(0, POST_LIMITS.youtubeTitle)
-    const description = [clip.hook, tags.join(' ')].filter(Boolean).join('\n\n')
-    return { title, description, tags: clip.keywords.slice(0, 10) }
+/** "#NoPixel, gtarp #GTA" → ["#NoPixel", "#gtarp", "#GTA"]: the hashtags in a free-text setting, casing kept. */
+export function parseHashtags(text: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of text.split(/[\s,]+/)) {
+    const tag = raw.replace(/[^\p{L}\p{N}]+/gu, '')
+    if (tag.length < 2 || seen.has(tag.toLowerCase())) continue
+    seen.add(tag.toLowerCase())
+    out.push(`#${tag}`)
   }
+  return out
+}
+
+/** A title without its hashtags: "NEVER AGAIN! 😂 #NoPixel #GTARP" → "NEVER AGAIN! 😂". */
+export function stripHashtags(text: string): string {
+  return text.replace(/(^|\s)#[\p{L}\p{N}_]+/gu, '').replace(/\s{2,}/g, ' ').trim()
+}
+
+/**
+ * First drafts of the text for a post, from what's known about the clip.
+ * YouTube: the clip's title without hashtags, an empty description and no tags, so YouTube finds the audience itself
+ * instead of testing the Short only on people who follow those tags (docs/shorts-playbook.md). `defaultHashtags`
+ * (Settings → Posting defaults) is opt-in: when set, they become the description.
+ */
+export function suggestPostText(clip: { title: string; hook: string | null; keywords: string[] }, platform: Platform, defaultHashtags = '') {
+  const own = parseHashtags(defaultHashtags)
+  if (platform === 'youtube') {
+    const title = (stripHashtags(clip.title) || clip.title).slice(0, POST_LIMITS.youtubeTitle)
+    return { title, description: own.join(' '), tags: [] as string[] }
+  }
+  const taken = new Set(own.map((t) => t.toLowerCase()))
+  const tags = [...own, ...hashtags(clip.keywords).filter((t) => !taken.has(t))].slice(0, 8)
   return { title: [clip.hook ?? clip.title, tags.join(' ')].filter(Boolean).join(' '), description: '', tags: [] as string[] }
 }

@@ -64,7 +64,7 @@ describe('MCP server', () => {
     expect(client.getInstructions()).toMatch(/Hook, seconds 0–3 \(40%\)/)
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ['evaluate_clip', 'get_frames', 'get_transcript', 'list_clips', 'list_projects', 'list_proposals', 'propose_clips', 'propose_import', 'propose_schedule', 'search_transcript'].sort(),
+      ['evaluate_clip', 'get_frames', 'get_highlights', 'get_transcript', 'list_clips', 'list_projects', 'list_proposals', 'propose_clips', 'propose_import', 'propose_schedule', 'search_transcript'].sort(),
     )
     expect(tools.find((t) => t.name === 'get_transcript')?.annotations?.readOnlyHint).toBe(true)
   })

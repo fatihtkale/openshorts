@@ -7,7 +7,9 @@ const item = z.object({
   title: z.string().max(2200),
   description: z.string().max(5000).optional(),
   scheduledAt: z.number(),
-  youtube: z.object({ privacy: z.enum(YOUTUBE_PRIVACY), tags: z.array(z.string().max(100)).max(30), madeForKids: z.boolean() }).optional(),
+  youtube: z
+    .object({ privacy: z.enum(YOUTUBE_PRIVACY), tags: z.array(z.string().max(100)).max(30), madeForKids: z.boolean(), relatedVideo: z.string().max(300).nullable().optional() })
+    .optional(),
   tiktok: z
     .object({
       mode: z.enum(['direct', 'draft']),

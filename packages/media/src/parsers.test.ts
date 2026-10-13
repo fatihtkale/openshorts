@@ -35,6 +35,31 @@ describe('yt-dlp', () => {
     })
     expect(meta).toMatchObject({ videoId: 'aqz-KE-bpKQ', durationSec: 635, maxHeight: 2160, isLive: false })
     expect(meta.thumbnailUrl).toBe('https://i.ytimg.com/vi/aqz-KE-bpKQ/hqdefault.jpg')
+    expect(meta.platform).toBe('youtube')
+  })
+
+  it('reads Twitch VODs and clips', () => {
+    const vod = parseYoutubeInfo({
+      id: 'v2283410123',
+      extractor_key: 'TwitchVod',
+      title: 'Ranked grind',
+      uploader: 'SomeStreamer',
+      uploader_id: 'somestreamer',
+      duration: 14_400,
+      view_count: 812,
+      thumbnail: 'https://static-cdn.jtvnw.net/cf_vods/x/thumb.jpg',
+      formats: [{ height: 1080 }, { height: 720 }],
+    })
+    expect(vod).toMatchObject({ videoId: 'v2283410123', platform: 'twitch', channel: 'SomeStreamer', durationSec: 14_400, maxHeight: 1080 })
+    expect(vod.twitch).toEqual({ kind: 'vod', channelLogin: 'somestreamer', viewCount: 812 })
+
+    const clip = parseYoutubeInfo({ id: '1234567', display_id: 'BraveTastyOtter-AbC', extractor_key: 'TwitchClips', title: 'No way', duration: 29.5 })
+    expect(clip).toMatchObject({ videoId: 'BraveTastyOtter-AbC', platform: 'twitch', twitch: { kind: 'clip' } })
+  })
+
+  it('explains Twitch failures', () => {
+    expect(friendlyYtdlpError(['ERROR: [twitch:vod] 123: This video is only available to subscribers (sub-only)'])).toMatch(/subscribers only/)
+    expect(friendlyYtdlpError(['ERROR: [twitch:vod] 123: HTTP Error 404: Not Found'])).toMatch(/VODs are deleted/)
   })
 })
 

@@ -181,7 +181,7 @@ defineExpose({ decide })
           </template>
         </p>
         <ULink :to="proposal.import.url" target="_blank" class="inline-flex items-center gap-1 text-sm">
-          Open on YouTube <UIcon name="i-lucide-external-link" class="size-3" />
+          Open on {{ proposal.import.meta.platform === 'twitch' ? 'Twitch' : 'YouTube' }} <UIcon name="i-lucide-external-link" class="size-3" />
         </ULink>
         <p class="text-xs text-muted">Only download videos you own or have permission to use.</p>
         <div v-if="pending" class="flex gap-2 pt-1">

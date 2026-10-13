@@ -26,6 +26,7 @@ const items = computed<NavigationMenuItem[][]>(() => [
     { label: 'Trash', icon: 'i-lucide-trash-2', to: '/trash' },
   ],
   [
+    { label: 'Guide', icon: 'i-lucide-book-open', to: '/guide' },
     { label: 'System check', icon: 'i-lucide-activity', to: '/system' },
     { label: 'Settings', icon: 'i-lucide-settings', to: '/settings' },
   ],

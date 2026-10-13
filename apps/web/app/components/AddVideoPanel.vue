@@ -30,8 +30,8 @@ function pickFiles(list: FileList | null | undefined) {
         :maxrows="6"
         autoresize
         size="lg"
-        icon="i-lucide-youtube"
-        placeholder="Paste YouTube links, one or more"
+        icon="i-lucide-link"
+        placeholder="Paste YouTube or Twitch links (videos, VODs, clips), one or more"
         class="flex-1"
         @keydown.enter.exact.prevent="submitLinks"
       />

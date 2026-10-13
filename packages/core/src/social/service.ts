@@ -18,6 +18,9 @@ import {
 } from '../shared/social'
 import { STATS_AGES_HOURS, type InsightPost } from '../shared/insights'
 
+/** The Google scope that allows editing uploaded videos (same as social's YOUTUBE_EDIT_SCOPE). */
+const YOUTUBE_EDIT_SCOPE_ID = 'https://www.googleapis.com/auth/youtube.force-ssl'
+
 /** Tokens as stored (encrypted). Times are epoch ms. */
 export interface StoredTokens {
   accessToken: string
@@ -50,7 +53,22 @@ export class AccountService {
   ) {}
 
   list(): AccountDto[] {
-    return this.db.select().from(accounts).orderBy(accounts.platform, accounts.createdAt).all().map(toAccountDto)
+    return this.db
+      .select()
+      .from(accounts)
+      .orderBy(accounts.platform, accounts.createdAt)
+      .all()
+      .map((row) => {
+        const dto = toAccountDto(row)
+        if (row.platform !== 'youtube') return dto
+        let scopes: string[] = []
+        try {
+          scopes = unseal<StoredTokens>(this.key, row.tokens).scopes
+        } catch {
+          // A secret key that changed: the account will ask to reconnect when used.
+        }
+        return { ...dto, canEditVideos: scopes.includes(YOUTUBE_EDIT_SCOPE_ID) }
+      })
   }
 
   get(id: string): AccountRow | null {
@@ -284,6 +302,85 @@ export class PostService {
         .run()
       this.enqueue(id, post.projectId, post.platform, scheduledAt)
     })
+    return this.dto(id)
+  }
+
+  /**
+   * A YouTube video already uploaded and waiting for its publish time can move to another time. Checks the new time
+   * before it's sent to YouTube (YouTube needs it in the future; at most 6 months ahead, as for new posts).
+   */
+  checkMove(id: string, scheduledAt: number): PostRow {
+    const post = this.require(id)
+    const now = this.now().getTime()
+    if (post.platform !== 'youtube' || post.status !== 'scheduled' || !post.remoteId) throw new ProjectError('Only a scheduled YouTube video can be moved this way', 'conflict')
+    if ((post.scheduledAt?.getTime() ?? 0) <= now) throw new ProjectError('This video is already public', 'conflict')
+    if (scheduledAt < now + 15 * 60_000) throw new ProjectError('Move it at least 15 minutes ahead', 'invalid')
+    if (scheduledAt > now + 180 * 24 * 3_600_000) throw new ProjectError('Schedule at most 6 months ahead', 'invalid')
+    return post
+  }
+
+  /** Stores a scheduled YouTube video's new publish time (once YouTube accepted it); the view-count checks move with it. */
+  saveMove(id: string, scheduledAt: number): PostDto {
+    const post = this.require(id)
+    this.db.transaction(() => {
+      this.db.update(posts).set({ scheduledAt: new Date(scheduledAt), updatedAt: this.now() }).where(eq(posts.id, id)).run()
+      for (const job of this.queue.activeForProject(post.projectId)) {
+        if (job.type === 'post.stats' && job.status === 'queued' && (job.payload as { postId?: string }).postId === id) this.queue.requestCancel(job.id)
+      }
+      this.planStats(id)
+    })
+    return this.dto(id)
+  }
+
+  /**
+   * Where a post's text can still change: 'local' while it waits (or failed), 'youtube' once the video is on YouTube
+   * (the change is sent there too), null while it's uploading or when the platform doesn't allow edits (TikTok).
+   */
+  textEditTarget(post: PostRow): 'local' | 'youtube' | null {
+    if (['queued', 'failed', 'missed', 'cancelled'].includes(post.status)) return 'local'
+    if (post.platform === 'youtube' && post.remoteId && (post.status === 'scheduled' || post.status === 'published')) return 'youtube'
+    return null
+  }
+
+  /** Checks new text for a post with the same rules as a new post. Returns it cleaned up. */
+  checkText(id: string, input: { title: string; description?: string; tags?: string[]; relatedVideo?: string | null }) {
+    const post = this.require(id)
+    const target = this.textEditTarget(post)
+    if (!target) {
+      throw new ProjectError(
+        post.platform === 'tiktok' ? "TikTok doesn't allow changing a post after it's up; edit it in the TikTok app" : 'This post is being uploaded right now; try again in a moment',
+        'conflict',
+      )
+    }
+    const title = input.title.trim()
+    const description = (input.description ?? '').trim()
+    const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean)
+    if (post.platform === 'youtube') {
+      if (!title) throw new ProjectError('A title is required', 'invalid')
+      if (title.length > POST_LIMITS.youtubeTitle) throw new ProjectError(`Titles can be at most ${POST_LIMITS.youtubeTitle} characters`, 'invalid')
+      if (/[<>]/.test(title + description)) throw new ProjectError('YouTube does not allow < or > in titles and descriptions', 'invalid')
+      if (description.length > POST_LIMITS.youtubeDescription) throw new ProjectError('The description is too long', 'invalid')
+      if (tags.join(',').length > POST_LIMITS.youtubeTagsChars) throw new ProjectError('Too many tags', 'invalid')
+    } else if (title.length > POST_LIMITS.tiktokCaption) {
+      throw new ProjectError('The caption is too long', 'invalid')
+    }
+    const relatedVideo = input.relatedVideo?.trim().slice(0, 300) || null
+    return { post, target, title, description: post.platform === 'youtube' ? description : '', tags, relatedVideo }
+  }
+
+  /** Stores checked text (after YouTube accepted it, for videos already there). */
+  saveText(id: string, text: { title: string; description: string; tags: string[]; relatedVideo: string | null }): PostDto {
+    const post = this.require(id)
+    this.db
+      .update(posts)
+      .set({
+        title: text.title,
+        description: text.description,
+        youtube: post.youtube ? { ...post.youtube, tags: text.tags, relatedVideo: text.relatedVideo } : post.youtube,
+        updatedAt: this.now(),
+      })
+      .where(eq(posts.id, id))
+      .run()
     return this.dto(id)
   }
 

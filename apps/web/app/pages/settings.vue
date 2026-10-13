@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CLAUDE_MODELS, COMMON_TIME_ZONES, type AiSettingsDto } from '@clipstudio/core/shared'
+import { CLAUDE_MODELS, COMMON_TIME_ZONES, MAX_PER_DAY, type AiSettingsDto } from '@clipstudio/core/shared'
 
 const { data: status, refresh } = await useFetch<{ client: string | null; lastSeen: number | null; url: string }>('/api/mcp-status', {
   server: false,
@@ -38,6 +38,8 @@ interface Defaults {
   mode: 'edges' | 'centred' | 'custom'
   jitterMin: number
   minGapMin: number
+  hashtags: string
+  perDay: number
 }
 const { data: defaults } = await useFetch<Defaults>('/api/settings/schedule', { server: false, deep: true })
 const savingDefaults = ref(false)
@@ -97,6 +99,32 @@ watch(
     if (p === 'ollama' && ollamaFound.value === null) void checkOllama()
   },
 )
+
+// ── Backups ──────────────────────────────────────────────────────────
+interface BackupList {
+  dir: string
+  secretFromEnv: boolean
+  backups: { name: string; kind: 'auto' | 'manual' | 'before-restore'; bytes: number; createdAt: number }[]
+}
+const { data: backups, refresh: refreshBackups } = await useFetch<BackupList>('/api/backups', { server: false })
+const backingUp = ref(false)
+async function backupNow() {
+  backingUp.value = true
+  try {
+    await $fetch('/api/backups', { method: 'POST' })
+  } catch (e) {
+    backingUp.value = false
+    toast.add({ title: 'Could not start the backup', description: (e as { statusMessage?: string }).statusMessage ?? (e as Error).message, color: 'error' })
+  }
+}
+onJobStatusChange((job) => {
+  if (job.type !== 'data.backup' || (job.status !== 'succeeded' && job.status !== 'failed')) return
+  backingUp.value = false
+  void refreshBackups()
+  if (job.status === 'succeeded') toast.add({ title: 'Backed up', icon: 'i-lucide-database-backup' })
+  else toast.add({ title: 'Backup failed', description: job.error ?? undefined, color: 'error' })
+})
+const kindLabel = { auto: 'Daily', manual: 'Manual', 'before-restore': 'Before a restore' } as const
 
 const tools = [
   { name: 'Read', icon: 'i-lucide-eye', items: 'projects, transcripts, search, video frames, clips, past proposals' },
@@ -241,6 +269,36 @@ const tools = [
         </template>
       </UCard>
 
+      <UCard v-if="backups">
+        <template #header>
+          <h2 class="font-semibold">Backups</h2>
+          <p class="text-sm text-muted">
+            While the app runs it saves a copy of the database once a day (the last 14 are kept), with the key that unlocks
+            your connected accounts. Videos aren't included; copy them with <code class="rounded bg-elevated px-1">pnpm backup --media --to /Volumes/YourDrive</code>.
+          </p>
+        </template>
+        <div class="space-y-4 text-sm">
+          <ul v-if="backups.backups.length" class="divide-y divide-default rounded-md border border-default">
+            <li v-for="b in backups.backups.slice(0, 5)" :key="b.name" class="flex items-center gap-3 px-3 py-2">
+              <UIcon name="i-lucide-database" class="size-4 shrink-0 text-muted" />
+              <span class="flex-1">{{ new Date(b.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) }}</span>
+              <UBadge :label="kindLabel[b.kind]" color="neutral" variant="subtle" size="sm" />
+              <span class="w-16 text-right text-xs text-muted tabular-nums">{{ (b.bytes / 1_048_576).toFixed(1) }} MB</span>
+            </li>
+          </ul>
+          <p v-else class="text-muted">No backups yet.</p>
+          <p class="text-xs text-muted">
+            In <code class="rounded bg-elevated px-1">{{ backups.dir }}</code>. To go back to one, stop the app and run
+            <code class="rounded bg-elevated px-1">pnpm restore</code>; it lists them, asks first, and saves the current state before replacing it.
+          </p>
+        </div>
+        <template #footer>
+          <div class="flex justify-end">
+            <UButton label="Back up now" icon="i-lucide-database-backup" :loading="backingUp" @click="backupNow" />
+          </div>
+        </template>
+      </UCard>
+
       <UCard v-if="defaults">
         <template #header>
           <h2 class="font-semibold">Posting defaults</h2>
@@ -271,11 +329,21 @@ const tools = [
               class="w-full"
             />
           </UFormField>
+          <UFormField :label="`At most ${defaults.perDay} ${defaults.perDay === 1 ? 'post' : 'posts'} a day per account`" help="More clips continue on the next days.">
+            <USlider v-model="defaults.perDay" :min="1" :max="MAX_PER_DAY" :step="1" />
+          </UFormField>
           <UFormField :label="`Warn when posts are less than ${defaults.minGapMin} min apart`">
             <USlider v-model="defaults.minGapMin" :min="0" :max="240" :step="15" />
           </UFormField>
           <UFormField :label="defaults.jitterMin ? `Vary times by up to ±${defaults.jitterMin} min` : 'Exact times'">
             <USlider v-model="defaults.jitterMin" :min="0" :max="30" :step="5" />
+          </UFormField>
+          <UFormField
+            label="Default hashtags"
+            help="Optional; best left empty. Without hashtags YouTube tests a Short on a wide audience instead of only people who follow those tags. When set, they become every new post's description."
+            class="sm:col-span-2"
+          >
+            <UInput v-model="defaults.hashtags" placeholder="Empty (recommended)" class="w-full" />
           </UFormField>
         </div>
         <template #footer>

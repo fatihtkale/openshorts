@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { presetById } from '@clipstudio/captions'
-import { formatTimecode, PLATFORM_LABELS, POST_STATUS_LABELS, type PostDto, type RenderDto } from '@clipstudio/core/shared'
+import { formatTimecode, PLATFORM_LABELS, POST_STATUS_LABELS, youtubeStudioUrl, type PostDto, type RenderDto } from '@clipstudio/core/shared'
 import type { ClipEditor } from '~/composables/useClipEditor'
 
 const props = defineProps<{ editor: ClipEditor }>()
@@ -126,6 +126,15 @@ function postJob(p: PostDto) {
             />
             <ULink v-if="p.url" :to="p.url" target="_blank" class="inline-flex items-center gap-1 text-xs text-primary">
               Open <UIcon name="i-lucide-external-link" class="size-3" />
+            </ULink>
+            <ULink
+              v-if="p.platform === 'youtube' && p.remoteId"
+              :to="youtubeStudioUrl(p.remoteId)"
+              target="_blank"
+              class="inline-flex items-center gap-1 text-xs text-primary"
+              :title="p.youtube?.relatedVideo ? `Related video to set: ${p.youtube.relatedVideo}` : 'Related video, end screens and more'"
+            >
+              YouTube Studio <UIcon name="i-lucide-external-link" class="size-3" />
             </ULink>
           </div>
           <UProgress v-if="postJob(p)?.status === 'running'" :model-value="Math.round((postJob(p)?.progress ?? 0) * 100)" size="xs" />

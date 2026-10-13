@@ -9,3 +9,8 @@ data/
 !.env.example
 *.log
 .DS_Store
+
+# End-to-end test data, media and traces
+e2e/.data/
+e2e/.media/
+e2e/.results/

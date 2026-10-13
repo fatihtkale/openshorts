@@ -1,5 +1,6 @@
 import type { SocialApps } from '@clipstudio/social'
 import type {
+  JobQueue,
   AccountService,
   AiSettingsDto,
   ClipService,
@@ -18,6 +19,7 @@ import { demoCount } from './demo'
 import { createDownloadHandler } from './download'
 import { createFacesHandler } from './faces'
 import { createEvaluateClipsHandler, createFindClipsHandler } from './find'
+import { createHighlightsHandler } from './highlights'
 import { createModelDownloadHandler } from './models'
 import { createPrepareHandler } from './prepare'
 import { createPublishHandler } from './publish'
@@ -45,6 +47,7 @@ export type JobHandler<T extends JobType> = (payload: JobPayload<T>, ctx: JobCon
 export type JobHandlers = { [K in JobType]: JobHandler<K> }
 
 export interface HandlerDeps {
+  queue: JobQueue
   projects: ProjectService
   transcripts: TranscriptService
   models: ModelService
@@ -52,10 +55,14 @@ export interface HandlerDeps {
   proposals: ProposalService
   /** In-app AI settings with the Anthropic key unsealed; read per job so Settings changes apply at once. */
   ai: () => AiSettingsDto & { anthropicKey: string | null }
+  /** A manual database snapshot (Settings → Back up now). */
+  backupNow: () => Promise<{ name: string; bytes: number }>
   renders: RenderService
   posts: PostService
   accounts: AccountService
   socialApps: SocialApps
+  /** The Twitch developer app from .env, for viewer-clip highlights; null when not set up. */
+  twitchApp: { clientId: string; clientSecret: string } | null
   storage: Storage
 }
 
@@ -72,6 +79,12 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
     'post.stats': createStatsHandler(deps),
     'clips.find': createFindClipsHandler(deps),
     'clips.evaluate': createEvaluateClipsHandler(deps),
+    'media.highlights': createHighlightsHandler(deps),
+    'data.backup': async (_payload, ctx) => {
+      ctx.progress(null, 'Copying the database')
+      const { name, bytes } = await deps.backupNow()
+      return { name, bytes }
+    },
   }
 }
 
