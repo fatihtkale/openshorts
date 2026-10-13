@@ -45,6 +45,8 @@ packages/core   Database (SQLite + Drizzle), job queue, storage, config, shared 
 packages/media  Wrappers around ffmpeg, yt-dlp and whisper.cpp
 packages/mcp    The MCP server Claude connects to (served by the web app at /mcp)
 packages/captions  Caption engine, presets, layouts and the cut timeline; runs in the browser and in the exporter
+packages/social YouTube and TikTok sign-in, uploads and view counts
+packages/ai     Optional in-app "Find clips" (Claude API key or a local Ollama model)
 data/           (gitignored) the database and all media files
 ```
 

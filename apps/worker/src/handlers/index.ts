@@ -1,6 +1,7 @@
 import type { SocialApps } from '@clipstudio/social'
 import type {
   AccountService,
+  AiSettingsDto,
   ClipService,
   JobPayload,
   JobRow,
@@ -8,6 +9,7 @@ import type {
   ModelService,
   PostService,
   ProjectService,
+  ProposalService,
   RenderService,
   Storage,
   TranscriptService,
@@ -15,10 +17,12 @@ import type {
 import { demoCount } from './demo'
 import { createDownloadHandler } from './download'
 import { createFacesHandler } from './faces'
+import { createEvaluateClipsHandler, createFindClipsHandler } from './find'
 import { createModelDownloadHandler } from './models'
 import { createPrepareHandler } from './prepare'
 import { createPublishHandler } from './publish'
 import { createRenderHandler } from './render'
+import { createStatsHandler } from './stats'
 import { createTranscribeHandler } from './transcribe'
 
 export interface JobContext {
@@ -45,6 +49,9 @@ export interface HandlerDeps {
   transcripts: TranscriptService
   models: ModelService
   clips: ClipService
+  proposals: ProposalService
+  /** In-app AI settings with the Anthropic key unsealed; read per job so Settings changes apply at once. */
+  ai: () => AiSettingsDto & { anthropicKey: string | null }
   renders: RenderService
   posts: PostService
   accounts: AccountService
@@ -62,6 +69,9 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
     'models.download': createModelDownloadHandler(deps),
     'clip.render': createRenderHandler(deps),
     'post.publish': createPublishHandler(deps),
+    'post.stats': createStatsHandler(deps),
+    'clips.find': createFindClipsHandler(deps),
+    'clips.evaluate': createEvaluateClipsHandler(deps),
   }
 }
 

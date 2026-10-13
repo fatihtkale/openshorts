@@ -1,9 +1,14 @@
 // Re-exports from the caption engine used across the editor, plus small formatting helpers.
 export {
   centreAt,
+  DEFAULT_SCREEN,
+  facecamWindow,
   fillRect,
+  MAX_FACECAM_ZOOM,
+  OUT_W,
   outputToSource,
   panelRect,
+  screenPanels,
   type LayoutMode,
   type Rect,
 } from '@clipstudio/captions'

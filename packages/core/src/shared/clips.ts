@@ -2,6 +2,7 @@
 import { CAPTION_ANIMATIONS, HOOK_STYLES, LAYOUT_MODES, type ClipEdit } from '@clipstudio/captions'
 import { z } from 'zod'
 import type { DownloadQuality, TimeRange, YoutubeMeta } from './projects'
+import type { ClipEvaluation } from './evaluation'
 import type { Word } from './transcripts'
 
 export const CLIP_STATUSES = ['proposed', 'approved', 'rejected'] as const
@@ -10,11 +11,9 @@ export type ClipStatus = (typeof CLIP_STATUSES)[number]
 export const CLIP_ORIGINS = ['claude', 'manual'] as const
 export type ClipOrigin = (typeof CLIP_ORIGINS)[number]
 
-/** Hard limits for a clip; the sweet spot for Shorts/TikTok is 15–60 s. */
+/** Hard limits for a clip; the sweet spot (22–45 s) and its warnings live in `evaluation.ts`. */
 export const CLIP_MIN_MS = 3_000
 export const CLIP_MAX_MS = 180_000
-export const CLIP_IDEAL_MIN_MS = 15_000
-export const CLIP_IDEAL_MAX_MS = 60_000
 
 export interface ClipDto {
   id: string
@@ -25,9 +24,11 @@ export interface ClipDto {
   title: string
   hook: string | null
   reason: string | null
-  /** 0–100, how likely Claude thinks it is to do well. */
+  /** 0–100, how likely Claude thinks it is to do well (10 × the evaluation total when there is one). */
   score: number | null
   keywords: string[]
+  /** The 4-pillar judgement, if the clip has been evaluated. */
+  evaluation: ClipEvaluation | null
   origin: ClipOrigin
   status: ClipStatus
   /** How the clip looks (layout, captions, hook, trims). Defaults filled in for older clips. */
@@ -72,6 +73,13 @@ export const clipEditSchema = z.object({
       top: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(4) }),
       bottom: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(4) }),
     }),
+    screen: z
+      .object({
+        screen: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(4) }),
+        face: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(8) }),
+        faceOnTop: z.boolean(),
+      })
+      .optional(),
   }),
   captions: z.object({
     enabled: z.boolean(),

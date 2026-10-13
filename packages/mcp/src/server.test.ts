@@ -61,9 +61,10 @@ const text = (result: Awaited<ReturnType<Client['callTool']>>) =>
 describe('MCP server', () => {
   it('explains itself and lists read and propose tools', async () => {
     expect(client.getInstructions()).toMatch(/can only PROPOSE/)
+    expect(client.getInstructions()).toMatch(/Hook, seconds 0–3 \(40%\)/)
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ['get_frames', 'get_transcript', 'list_clips', 'list_projects', 'list_proposals', 'propose_clips', 'propose_import', 'propose_schedule', 'search_transcript'].sort(),
+      ['evaluate_clip', 'get_frames', 'get_transcript', 'list_clips', 'list_projects', 'list_proposals', 'propose_clips', 'propose_import', 'propose_schedule', 'search_transcript'].sort(),
     )
     expect(tools.find((t) => t.name === 'get_transcript')?.annotations?.readOnlyHint).toBe(true)
   })
@@ -108,7 +109,19 @@ describe('MCP server', () => {
     expect(text(missing)).toBe('Project not found')
 
     const listed = JSON.parse(text(await client.callTool({ name: 'list_clips', arguments: { projectId } })))
-    expect(listed[0]).toMatchObject({ title: 'The one trick', status: 'waiting in Inbox' })
+    expect(listed[0]).toMatchObject({ title: 'The one trick', status: 'waiting in Inbox', evaluation: 'not evaluated' })
+
+    // Evaluating saves a note; the clip's edges stay where they are.
+    const evaluation = {
+      hook: 8, pacing: 6, payoff: 7, standalone: 9, hookNotes: 'Starts on the result.', retentionRisk: 'Slows at 6 s.', payoffNotes: 'Kept.',
+      muteTest: 'fail', muteNotes: 'All talk.', suggestedStartSec: null, suggestedEndSec: 8.3, trimNotes: 'End on the payoff.',
+    }
+    const saved = await client.callTool({ name: 'evaluate_clip', arguments: { clipId: listed[0].id, evaluation } })
+    expect(saved.isError).toBeFalsy()
+    expect(text(saved)).toMatch(/Saved: 7.3\/10 for “The one trick”/)
+    expect(text(saved)).toMatch(/Only the user can apply it/)
+    const after = JSON.parse(text(await client.callTool({ name: 'list_clips', arguments: { projectId } })))
+    expect(after[0]).toMatchObject({ evaluation: '7.3/10', startSec: listed[0].startSec, endSec: listed[0].endSec })
   })
 
   it('only proposes schedules for exported clips', async () => {

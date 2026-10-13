@@ -32,7 +32,7 @@ export class ProposalService {
     const accepted: ClipDraft[] = []
     const skipped: ProposeClipsResult['skipped'] = []
     for (const draft of input.clips) {
-      const prepared = this.clipService.prepare(input.projectId, draft)
+      const prepared = this.clipService.prepare(input.projectId, draft, { trimLeadIn: true, by: input.client ?? null })
       if ('error' in prepared) {
         skipped.push({ title: draft.title, reason: prepared.error })
         continue

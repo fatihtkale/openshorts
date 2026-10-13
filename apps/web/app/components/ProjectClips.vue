@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatTimecode, type ClipDto, type ProjectDto } from '@clipstudio/core/shared'
+import { evaluationState, formatTimecode, verdict, type ClipDto, type ProjectDto } from '@clipstudio/core/shared'
 
 const props = defineProps<{ project: ProjectDto }>()
 const emit = defineEmits<{ play: [startMs: number, endMs: number] }>()
@@ -15,6 +15,8 @@ const { pending: inboxCount } = useInboxCount()
 watch([version, inboxCount], () => void refresh())
 
 const approved = computed(() => clips.value.filter((c) => c.status === 'approved'))
+/** Approved clips without an up-to-date evaluation. */
+const unscored = computed(() => approved.value.filter((c) => !c.evaluation || evaluationState(c.evaluation, c) === 'stale').slice(0, 20))
 const { jobs } = useJobs()
 onJobStatusChange((job) => {
   if (job.type === 'clip.render' && job.projectId === props.project.id) void refresh()
@@ -87,16 +89,26 @@ async function restore(clip: ClipDto) {
       <div class="flex items-center gap-2">
         <h2 class="font-semibold">Clips</h2>
         <span v-if="approved.length" class="text-xs text-muted">{{ approved.length }}</span>
-        <UButton
-          v-if="needsExport.length > 1"
-          :label="`Export all ${needsExport.length}`"
-          icon="i-lucide-film"
-          color="neutral"
-          variant="outline"
-          size="xs"
-          class="ml-auto"
-          @click="exportAllOpen = true"
-        />
+        <div class="ml-auto flex items-center gap-2">
+          <FindClipsButton :project="project" />
+          <EvaluateButton
+            v-if="unscored.length && project.transcript?.status === 'ready'"
+            :project-id="project.id"
+            :clip-ids="unscored.map((c) => c.id)"
+            :label="`Evaluate ${unscored.length}`"
+            size="xs"
+            @done="refresh()"
+          />
+          <UButton
+            v-if="needsExport.length > 1"
+            :label="`Export all ${needsExport.length}`"
+            icon="i-lucide-film"
+            color="neutral"
+            variant="outline"
+            size="xs"
+            @click="exportAllOpen = true"
+          />
+        </div>
       </div>
     </template>
 
@@ -119,7 +131,19 @@ async function restore(clip: ClipDto) {
           </span>
         </button>
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium">{{ clip.title }}</p>
+          <p class="flex items-center gap-2 text-sm font-medium">
+            <span class="truncate">{{ clip.title }}</span>
+            <UBadge
+              v-if="clip.evaluation"
+              :label="`${clip.evaluation.total.toFixed(1)}/10`"
+              :icon="verdict(clip.evaluation.total).icon"
+              :color="evaluationState(clip.evaluation, clip) === 'stale' ? 'neutral' : verdict(clip.evaluation.total).tone"
+              variant="subtle"
+              size="sm"
+              class="shrink-0"
+              :title="evaluationState(clip.evaluation, clip) === 'stale' ? 'Evaluated before the clip changed' : verdict(clip.evaluation.total).label"
+            />
+          </p>
           <p class="text-xs text-muted tabular-nums">
             {{ formatTimecode(clip.startMs / 1000) }}–{{ formatTimecode(clip.endMs / 1000) }} · {{ formatTimecode((clip.endMs - clip.startMs) / 1000) }}
             · {{ clip.origin === 'claude' ? 'by Claude' : 'made by you' }}
@@ -160,7 +184,7 @@ async function restore(clip: ClipDto) {
       </div>
       <p class="text-xs text-muted">
         <template v-if="!mcp?.lastSeen">
-          Claude isn't connected yet. <ULink to="/settings" class="text-primary">Connect Claude</ULink> first.
+          Claude isn't connected yet. <ULink to="/settings" class="text-primary">Connect Claude</ULink> first, or turn on in-app AI there.
         </template>
         Or select words in the transcript to make a clip yourself.
       </p>

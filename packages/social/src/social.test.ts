@@ -19,6 +19,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { SocialError } from './errors'
 import { challengeBase64Url, challengeHex, codeVerifier } from './pkce'
 import { accessToken, publishPost, type SocialApps } from './publish'
+import { collectPostStats } from './stats'
 import { tiktokAuthUrl, tiktokChunks, tiktokError, tiktokExchangeCode } from './tiktok'
 import { youtubeAuthUrl, youtubeError, youtubeExchangeCode, youtubeProfile } from './youtube'
 
@@ -56,6 +57,10 @@ beforeAll(async () => {
     if (url.pathname === '/yt/channels') {
       return json(res, 200, { items: [{ id: 'UC123', snippet: { title: 'My Channel', customUrl: '@mychannel', thumbnails: { default: { url: 'https://img/a.jpg' } } } }] })
     }
+    if (url.pathname === '/yt/videos' && req.method === 'GET') {
+      const ids = (url.searchParams.get('id') ?? '').split(',')
+      return json(res, 200, { items: ids.filter((id) => id === 'vid42').map((id) => ({ id, statistics: { viewCount: '1234', likeCount: '56', commentCount: '7' } })) })
+    }
     if (url.pathname === '/ytup/videos' && req.method === 'POST') return json(res, 200, {}, { location: `${base}/ytup/session/1` })
     if (url.pathname === '/ytup/session/1' && req.method === 'PUT') return json(res, 200, { id: 'vid42' })
 
@@ -90,6 +95,10 @@ beforeAll(async () => {
       const done = tiktokPolls >= 2
       return json(res, 200, { data: done ? { status: 'PUBLISH_COMPLETE', publicaly_available_post_id: [7123] } : { status: 'PROCESSING_UPLOAD' }, error: { code: 'ok' } })
     }
+    if (url.pathname === '/tt/v2/video/query/') {
+      const ids = (JSON.parse(body.toString()) as { filters: { video_ids: string[] } }).filters.video_ids
+      return json(res, 200, { data: { videos: ids.map((id) => ({ id, view_count: 900, like_count: 80, comment_count: 4, share_count: 3 })) }, error: { code: 'ok' } })
+    }
     json(res, 404, { error: 'not found' })
   })
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
@@ -112,7 +121,7 @@ describe('PKCE and sign-in URLs', () => {
     const t = new URL(tiktokAuthUrl(app, 'st', v, tt()))
     expect(t.searchParams.get('code_challenge')).toBe(challengeHex(v))
     expect(t.searchParams.get('code_challenge')).toMatch(/^[0-9a-f]{64}$/)
-    expect(t.searchParams.get('scope')).toBe('user.info.basic,video.publish,video.upload')
+    expect(t.searchParams.get('scope')).toBe('user.info.basic,video.publish,video.upload,video.list')
   })
 
   it('exchanges codes, sending the verifier', async () => {
@@ -157,6 +166,7 @@ describe('publishPost', () => {
   let dir: string
   let posts: PostService
   let accounts: AccountService
+  let queue: JobQueue
   let renderId: string
   let file: { path: string; bytes: number; mimeType: string }
   const apps: SocialApps = { youtube: app, tiktok: app }
@@ -164,7 +174,7 @@ describe('publishPost', () => {
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'clipstudio-social-'))
     const db = createTestDb()
-    const queue = new JobQueue(db)
+    queue = new JobQueue(db)
     const projects = new ProjectService(db, queue, new LocalStorage(dir))
     const clips = new ClipService(db)
     const renders = new RenderService(db, queue)
@@ -247,6 +257,30 @@ describe('publishPost', () => {
     await publishPost({ posts, accounts, apps, endpoints: { tiktok: tt() }, pollMs: 5 }, post.id, file)
     expect(seen.some((s) => s.path.includes('/init/'))).toBe(false)
     expect(seen.some((s) => s.path === '/tt/upload')).toBe(false)
+  })
+
+  it('plans view checks after posting and stores what the platforms report', async () => {
+    const tokens = { accessToken: 'tok', refreshToken: 'r', expiresAt: Date.now() + 3_600_000, refreshExpiresAt: null }
+    const y = accounts.connect('youtube', { externalId: 'UC1', displayName: 'Chan', username: null, avatarUrl: null }, { ...tokens, scopes: [] })
+    const post = posts.create({ renderId, accountId: y.id, title: 'Hello', youtube: { privacy: 'public', tags: [], madeForKids: false } })
+    await publishPost({ posts, accounts, apps, endpoints: { youtube: yt() } }, post.id, file)
+    const live = posts.get(post.id)!.publishedAt!.getTime()
+    const checks = queue.listRecent(50).filter((j) => j.type === 'post.stats')
+    expect(checks.map((j) => Math.round((j.runAt.getTime() - live) / 3_600_000)).sort((a, b) => a - b)).toEqual([48, 168])
+
+    expect(await collectPostStats({ posts, accounts, apps, endpoints: { youtube: yt() } }, post.id)).toEqual({ views: 1234 })
+    expect(posts.insights()[0]!.readings[0]).toMatchObject({ views: 1234, likes: 56, comments: 7, shares: null })
+
+    // TikTok: needs the video.list permission, which older sign-ins lack.
+    const options = { mode: 'direct' as const, privacy: 'PUBLIC_TO_EVERYONE' as const, allowComments: true, allowDuet: true, allowStitch: true, brandContent: false, brandOrganic: false, aiGenerated: false }
+    const t = accounts.connect('tiktok', { externalId: 'open-1', displayName: 'Maker', username: null, avatarUrl: null }, { ...tokens, scopes: ['video.publish'] })
+    const tp = posts.create({ renderId, accountId: t.id, title: 'c', tiktok: options })
+    tiktokPolls = 0
+    await publishPost({ posts, accounts, apps, endpoints: { tiktok: tt() }, pollMs: 5 }, tp.id, file)
+    expect(posts.get(tp.id)!.remoteId).toBe('7123')
+    expect(await collectPostStats({ posts, accounts, apps, endpoints: { tiktok: tt() } }, tp.id)).toMatchObject({ skipped: expect.stringMatching(/Reconnect/) })
+    accounts.connect('tiktok', { externalId: 'open-1', displayName: 'Maker', username: null, avatarUrl: null }, { ...tokens, scopes: ['video.publish', 'video.list'] })
+    expect(await collectPostStats({ posts, accounts, apps, endpoints: { tiktok: tt() } }, tp.id)).toEqual({ views: 900 })
   })
 
   it('refuses a privacy level the creator does not offer', async () => {

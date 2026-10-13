@@ -15,7 +15,8 @@
     "tsx": "^4.23.15",
     "@clipstudio/captions": "workspace:*",
     "@napi-rs/canvas": "^1.0.11",
-    "@clipstudio/social": "workspace:*"
+    "@clipstudio/social": "workspace:*",
+    "@clipstudio/ai": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0"

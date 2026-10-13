@@ -29,6 +29,8 @@ interface Core {
   renders: RenderService
   accounts: AccountService
   posts: PostService
+  /** Seals stored secrets (account tokens, the Anthropic key). */
+  secretKey: Buffer
 }
 
 // Kept on globalThis so dev-server hot reloads reuse one SQLite connection.
@@ -42,6 +44,7 @@ export function useCore(): Core {
     const storage = new LocalStorage(config.storageDir)
     const projects = new ProjectService(db, queue, storage)
     const clips = new ClipService(db)
+    const secretKey = loadSecretKey(config.dataDir)
     holder.__clipstudioCore = {
       config,
       db,
@@ -53,8 +56,9 @@ export function useCore(): Core {
       clips,
       proposals: new ProposalService(db, clips, projects),
       renders: new RenderService(db, queue),
-      accounts: new AccountService(db, loadSecretKey(config.dataDir)),
+      accounts: new AccountService(db, secretKey),
       posts: new PostService(db, queue),
+      secretKey,
     }
   }
   return holder.__clipstudioCore

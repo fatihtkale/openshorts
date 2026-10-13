@@ -21,6 +21,7 @@ const items = computed<NavigationMenuItem[][]>(() => [
       to: '/calendar',
       badge: missed.value ? { label: `${missed.value} missed`, color: 'error' as const, variant: 'subtle' as const, size: 'sm' as const } : undefined,
     },
+    { label: 'Insights', icon: 'i-lucide-chart-column', to: '/insights' },
     { label: 'Accounts', icon: 'i-lucide-at-sign', to: '/accounts' },
     { label: 'Trash', icon: 'i-lucide-trash-2', to: '/trash' },
   ],

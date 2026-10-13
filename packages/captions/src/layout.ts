@@ -1,4 +1,4 @@
-import type { ClipLayout, CropKeyframe, PanelWindow } from './types'
+import type { ClipLayout, CropKeyframe, PanelWindow, ScreenLayout } from './types'
 import { OUT_H, OUT_W } from './types'
 
 export interface Rect {
@@ -71,4 +71,31 @@ export function fitRect(srcW: number, srcH: number): Rect {
 /** Whether a source is already vertical (9:16 or taller), in which case fill needs no cropping choices. */
 export function isVertical(srcW: number, srcH: number): boolean {
   return srcW / srcH <= OUT_W / OUT_H + 0.01
+}
+
+export const DEFAULT_SCREEN: ScreenLayout = {
+  screen: { x: 0.5, y: 0.5, zoom: 1 },
+  face: { x: 0.5, y: 0.5, zoom: 1 },
+  faceOnTop: false,
+}
+
+/** The screen part never takes less than a quarter or more than 60% of the height, so the face always has room. */
+const SCREEN_MIN_H = 480
+const SCREEN_MAX_H = 1152
+
+/** Screen mode: where each part comes from in the source and where it lands in the 1080×1920 output. */
+export function screenPanels(layout: ClipLayout, srcW: number, srcH: number): { screen: { src: Rect; out: Rect }; face: { src: Rect; out: Rect } } {
+  const s = layout.screen ?? DEFAULT_SCREEN
+  const screenH = Math.round(clamp((OUT_W * srcH) / srcW, SCREEN_MIN_H, SCREEN_MAX_H) / 2) * 2
+  const faceH = OUT_H - screenH
+  return {
+    screen: {
+      src: windowRect(srcW, srcH, OUT_W / screenH, s.screen.x, s.screen.y, s.screen.zoom),
+      out: { x: 0, y: s.faceOnTop ? faceH : 0, w: OUT_W, h: screenH },
+    },
+    face: {
+      src: windowRect(srcW, srcH, OUT_W / faceH, s.face.x, s.face.y, s.face.zoom),
+      out: { x: 0, y: s.faceOnTop ? 0 : screenH, w: OUT_W, h: faceH },
+    },
+  }
 }

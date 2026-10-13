@@ -64,7 +64,7 @@ export interface HookSettings {
   y: number
 }
 
-export const LAYOUT_MODES = ['fill', 'fit', 'split'] as const
+export const LAYOUT_MODES = ['fill', 'fit', 'split', 'screen'] as const
 export type LayoutMode = (typeof LAYOUT_MODES)[number]
 
 /** Where the 9:16 window sits at a moment. x/y are the window centre in the source, 0..1. */
@@ -84,6 +84,16 @@ export interface PanelWindow {
   zoom: number
 }
 
+/** Screen mode: a screen recording kept at full width, the speaker's face filling the rest of the frame. */
+export interface ScreenLayout {
+  /** The screen part (keeps the source's shape; zoom crops in). */
+  screen: PanelWindow
+  /** The face window; its shape follows whatever height the screen leaves. */
+  face: PanelWindow
+  /** Face above the screen instead of below it. */
+  faceOnTop: boolean
+}
+
 export interface ClipLayout {
   mode: LayoutMode
   /** Fill: follow faces automatically (keyframes come from the project's face track). */
@@ -94,6 +104,8 @@ export interface ClipLayout {
   keyframes: CropKeyframe[]
   /** Split: top and bottom halves, each 1080×960. */
   split: { top: PanelWindow; bottom: PanelWindow }
+  /** Screen: missing on clips made before this mode existed (defaults apply). */
+  screen?: ScreenLayout
 }
 
 export interface TrimSettings {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { autoFrame, faceCoverage, resolveLayout, type FaceBox, type FaceTrack } from './faces'
-import { centreAt } from './layout'
+import { autoFrame, facecamWindow, faceCoverage, resolveLayout, type FaceBox, type FaceTrack } from './faces'
+import { centreAt, screenPanels, windowRect } from './layout'
 import { defaultEdit } from './presets'
 
 const face = (cx: number, size = 0.1, score = 0.95): FaceBox => ({ x: cx - size / 2, y: 0.3, w: size, h: size * 1.6, score })
@@ -68,5 +68,38 @@ describe('faceCoverage and resolveLayout', () => {
     expect(resolveLayout({ ...layout, auto: false }, track, { start: 0, end: 10_000 })).toEqual({ ...layout, auto: false })
     expect(resolveLayout({ ...layout, mode: 'fit' }, track, { start: 0, end: 10_000 }).keyframes).toEqual(layout.keyframes)
     expect(resolveLayout(layout, null, { start: 0, end: 10_000 })).toBe(layout)
+  })
+})
+
+describe('screen layout', () => {
+  it('keeps a 16:9 screen at full width and gives the face the rest', () => {
+    const layout = { ...defaultEdit().layout, mode: 'screen' as const }
+    const p = screenPanels(layout, 1920, 1080)
+    expect(p.screen.out).toEqual({ x: 0, y: 0, w: 1080, h: 608 })
+    expect(p.face.out).toEqual({ x: 0, y: 608, w: 1080, h: 1312 })
+    // At zoom 1 the screen part is (almost exactly) the whole frame.
+    expect(p.screen.src.w).toBeCloseTo(1920, -1)
+    // Swapped: face on top.
+    const swapped = screenPanels({ ...layout, screen: { screen: { x: 0.5, y: 0.5, zoom: 1 }, face: { x: 0.5, y: 0.5, zoom: 1 }, faceOnTop: true } }, 1920, 1080)
+    expect(swapped.face.out.y).toBe(0)
+    expect(swapped.screen.out.y).toBe(1312)
+    // A 4:3 screen is capped so the face keeps at least 40% of the height.
+    expect(screenPanels(layout, 1440, 1080).screen.out.h).toBe(810)
+    expect(screenPanels(layout, 1080, 1920).screen.out.h).toBe(1152)
+  })
+
+  it('finds the facecam in a corner and zooms in on it', () => {
+    // A small face in the bottom-right corner, steady through the clip.
+    const cam = (): FaceBox => ({ x: 0.84, y: 0.74, w: 0.06, h: 0.1, score: 0.9 })
+    const track: FaceTrack = { version: 1, sampleMs: 200, frames: Array.from({ length: 50 }, () => [cam()]), cuts: [] }
+    const aspect = 1080 / 1312
+    const w = facecamWindow(track, { start: 0, end: 10_000 }, aspect, 1920, 1080)!
+    expect(w.x).toBeCloseTo(0.87)
+    expect(w.y).toBeCloseTo(0.79)
+    // The face (108 px tall) fills about 40% of the window.
+    const r = windowRect(1920, 1080, aspect, w.x, w.y, w.zoom)
+    expect(108 / r.h).toBeGreaterThan(0.35)
+    expect(108 / r.h).toBeLessThan(0.45)
+    expect(facecamWindow({ ...track, frames: [] }, { start: 0, end: 10_000 }, aspect, 1920, 1080)).toBeNull()
   })
 })

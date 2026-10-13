@@ -12,6 +12,7 @@ import {
   outputToSource,
   paginate,
   panelRect,
+  screenPanels,
   sourceToOutput,
   type Page,
 } from '@clipstudio/captions'
@@ -70,6 +71,9 @@ function draw() {
       const bottom = panelRect(layout.split.bottom, vw, vh)
       ctx.drawImage(v, top.x, top.y, top.w, top.h, 0, 0, OUT_W, OUT_H / 2)
       ctx.drawImage(v, bottom.x, bottom.y, bottom.w, bottom.h, 0, OUT_H / 2, OUT_W, OUT_H / 2)
+    } else if (layout.mode === 'screen') {
+      const p = screenPanels(layout, vw, vh)
+      for (const part of [p.screen, p.face]) ctx.drawImage(v, part.src.x, part.src.y, part.src.w, part.src.h, part.out.x, part.out.y, part.out.w, part.out.h)
     } else {
       // Fit: a blurred, darkened fill behind the whole frame (the exporter does the same with ffmpeg).
       const cover = Math.max(OUT_W / vw, OUT_H / vh)

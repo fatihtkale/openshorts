@@ -14,6 +14,8 @@ import {
   type ClipStatus,
   type RenderDto,
 } from '../shared/clips'
+import { evaluationInputSchema, evaluationTotal, trimLeadIn, type ClipEvaluation, type EvaluationInput } from '../shared/evaluation'
+import type { Word } from '../shared/transcripts'
 
 export function toRenderDto(row: RenderRow): RenderDto {
   return {
@@ -47,6 +49,7 @@ export function toClipDto(row: ClipRow, render: RenderRow | null = null): ClipDt
     reason: row.reason,
     score: row.score,
     keywords: row.keywords,
+    evaluation: row.evaluation ?? null,
     origin: row.origin,
     status: row.status,
     edit: resolveEdit(row),
@@ -67,6 +70,61 @@ export interface ClipDraft {
   keywords?: string[]
   /** Word → emoji, for the emoji caption preset. */
   emojis?: Record<string, string>
+  /** A 4-pillar judgement from the model that proposed it (times in seconds). */
+  evaluation?: EvaluationInput | null
+  /** Set by `prepare`: the evaluation, checked and with suggested edges snapped. */
+  checked?: ClipEvaluation | null
+}
+
+/**
+ * Checks a model's evaluation and turns it into what is stored: the total is computed here, suggested edges are
+ * snapped to words and dropped when they barely differ from the current ones.
+ */
+export function checkEvaluation(
+  input: EvaluationInput,
+  range: { startMs: number; endMs: number },
+  ctx: { words: Word[]; durationMs: number; by: string | null; at: number },
+): ClipEvaluation | null {
+  const parsed = evaluationInputSchema.safeParse(input)
+  if (!parsed.success) return null
+  const e = parsed.data
+  let suggestedStartMs: number | null = null
+  let suggestedEndMs: number | null = null
+  if (e.suggestedStartSec !== null || e.suggestedEndSec !== null) {
+    const rawStart = e.suggestedStartSec === null ? range.startMs : e.suggestedStartSec * 1000
+    const rawEnd = e.suggestedEndSec === null ? range.endMs : e.suggestedEndSec * 1000
+    if (rawEnd > rawStart && rawStart < ctx.durationMs) {
+      const snapped = snapToWords(ctx.words, rawStart, Math.min(rawEnd, ctx.durationMs), ctx.durationMs)
+      // An edge the model left alone stays exactly where it is.
+      if (e.suggestedStartSec === null) snapped.startMs = range.startMs
+      if (e.suggestedEndSec === null) snapped.endMs = range.endMs
+      const length = snapped.endMs - snapped.startMs
+      const moved = Math.abs(snapped.startMs - range.startMs) > 300 || Math.abs(snapped.endMs - range.endMs) > 300
+      if (moved && length >= CLIP_MIN_MS && length <= CLIP_MAX_MS) {
+        suggestedStartMs = snapped.startMs
+        suggestedEndMs = snapped.endMs
+      }
+    }
+  }
+  return {
+    hook: e.hook,
+    pacing: e.pacing,
+    payoff: e.payoff,
+    standalone: e.standalone,
+    total: evaluationTotal(e),
+    hookNotes: e.hookNotes,
+    retentionRisk: e.retentionRisk,
+    payoffNotes: e.payoffNotes,
+    muteTest: e.muteTest,
+    muteNotes: e.muteNotes,
+    suggestedStartMs,
+    suggestedEndMs,
+    trimNotes: suggestedStartMs === null ? '' : e.trimNotes,
+    evaluatedStartMs: range.startMs,
+    evaluatedEndMs: range.endMs,
+    by: ctx.by,
+    at: ctx.at,
+  }
 }
 
 export class ClipService {
@@ -127,7 +185,11 @@ export class ClipService {
    * Checks a draft against the project and snaps it to word boundaries.
    * Returns the cleaned clip, or a reason it can't be used.
    */
-  prepare(projectId: string, draft: ClipDraft): { clip: ClipDraft } | { error: string } {
+  /**
+   * Validates a clip and snaps it to words. `trimLeadIn` (for model proposals) also drops an opening greeting
+   * or filler, so clips start on the point. `by` names who wrote an included evaluation.
+   */
+  prepare(projectId: string, draft: ClipDraft, opts: { trimLeadIn?: boolean; by?: string | null } = {}): { clip: ClipDraft } | { error: string } {
     const project = this.db.select().from(projects).where(eq(projects.id, projectId)).get()
     if (!project) return { error: 'Project not found' }
     if (project.status !== 'ready' || !project.durationMs) return { error: 'The video has not finished importing' }
@@ -137,18 +199,25 @@ export class ClipService {
     if (draft.startMs < 0 || draft.startMs >= project.durationMs) return { error: 'The start is outside the video' }
 
     const transcript = this.db.select({ words: transcripts.words }).from(transcripts).where(eq(transcripts.projectId, projectId)).get()
-    const snapped = snapToWords(transcript?.words ?? [], draft.startMs, Math.min(draft.endMs, project.durationMs), project.durationMs)
+    const words = transcript?.words ?? []
+    const snapped = snapToWords(words, draft.startMs, Math.min(draft.endMs, project.durationMs), project.durationMs)
+    if (opts.trimLeadIn) snapped.startMs = trimLeadIn(words, snapped.startMs, snapped.endMs)
     const length = snapped.endMs - snapped.startMs
     if (length < CLIP_MIN_MS) return { error: `Too short (${(length / 1000).toFixed(1)} s; at least ${CLIP_MIN_MS / 1000} s)` }
     if (length > CLIP_MAX_MS) return { error: `Too long (${Math.round(length / 1000)} s; at most ${CLIP_MAX_MS / 1000} s)` }
 
+    const checked = draft.evaluation
+      ? checkEvaluation(draft.evaluation, snapped, { words, durationMs: project.durationMs, by: opts.by ?? null, at: this.now().getTime() })
+      : null
+    const score = checked ? Math.round(checked.total * 10) : draft.score
     return {
       clip: {
         ...snapped,
+        checked,
         title: title.slice(0, 120),
         hook: draft.hook?.trim().slice(0, 160) || null,
         reason: draft.reason?.trim().slice(0, 600) || null,
-        score: draft.score === null || draft.score === undefined ? null : Math.max(0, Math.min(100, Math.round(draft.score))),
+        score: score === null || score === undefined ? null : Math.max(0, Math.min(100, Math.round(score))),
         keywords: (draft.keywords ?? []).map((k) => k.trim()).filter(Boolean).slice(0, 12),
         emojis: Object.fromEntries(
           Object.entries(draft.emojis ?? {})
@@ -186,6 +255,7 @@ export class ClipService {
         reason: clip.reason ?? null,
         score: clip.score ?? null,
         keywords: clip.keywords ?? [],
+        evaluation: clip.checked ?? null,
         edit: defaultEdit({ hook: clip.hook, emojis: clip.emojis }),
         origin: extra.origin,
         status: extra.status,
@@ -247,6 +317,33 @@ export class ClipService {
       .where(eq(clips.id, id))
       .run()
     return this.require(id)
+  }
+
+  /**
+   * Stores an evaluation of the clip as it is now. It's a note: the clip itself, its version and its export
+   * are untouched; the user applies a suggested trim in the editor.
+   */
+  setEvaluation(id: string, input: EvaluationInput, by: string | null): ClipDto {
+    const row = this.db.select().from(clips).where(eq(clips.id, id)).get()
+    if (!row) throw new ProjectError('Clip not found', 'not_found')
+    const project = this.db.select().from(projects).where(eq(projects.id, row.projectId)).get()
+    const transcript = this.db.select({ words: transcripts.words }).from(transcripts).where(eq(transcripts.projectId, row.projectId)).get()
+    const evaluation = checkEvaluation(input, row, { words: transcript?.words ?? [], durationMs: project?.durationMs ?? row.endMs, by, at: this.now().getTime() })
+    if (!evaluation) throw new ProjectError('The evaluation is incomplete', 'invalid')
+    this.db
+      .update(clips)
+      .set({ evaluation, score: Math.round(evaluation.total * 10), updatedAt: this.now() })
+      .where(eq(clips.id, id))
+      .run()
+    return this.require(id)
+  }
+
+  /** Moves the clip's edges to its evaluation's suggested trim (the user clicked "Apply trim"). */
+  applySuggestedTrim(id: string, expectedVersion: number): ClipDto {
+    const clip = this.require(id)
+    const e = clip.evaluation
+    if (!e || e.suggestedStartMs === null || e.suggestedEndMs === null) throw new ProjectError('This clip has no suggested trim', 'conflict')
+    return this.update(id, { startMs: e.suggestedStartMs, endMs: e.suggestedEndMs }, expectedVersion)
   }
 
   rename(id: string, title: string): ClipDto {

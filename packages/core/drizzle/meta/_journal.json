@@ -50,6 +50,20 @@
       "when": 1791846023835,
       "tag": "0006_scheduling",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791846790140,
+      "tag": "0007_post_stats",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791884971112,
+      "tag": "0008_clip_evaluation",
+      "breakpoints": true
     }
   ]
 }

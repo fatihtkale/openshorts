@@ -5,7 +5,7 @@ const route = useRoute()
 const editor = useClipEditor(() => String(route.params.id))
 const { data, draft, saveState, error } = editor
 
-const tab = ref<'captions' | 'layout' | 'hook' | 'trim' | 'export'>('captions')
+const tab = ref<'captions' | 'layout' | 'hook' | 'trim' | 'score' | 'export'>('captions')
 const time = ref(0)
 const playing = ref(false)
 const safeZones = ref(false)
@@ -61,6 +61,7 @@ const tabs = [
   { label: 'Layout', value: 'layout', icon: 'i-lucide-crop' },
   { label: 'Hook', value: 'hook', icon: 'i-lucide-megaphone' },
   { label: 'Trim', value: 'trim', icon: 'i-lucide-scissors' },
+  { label: 'Score', value: 'score', icon: 'i-lucide-gauge' },
   { label: 'Export', value: 'export', icon: 'i-lucide-film' },
 ]
 </script>
@@ -148,6 +149,7 @@ const tabs = [
           <EditorLayoutPanel v-else-if="tab === 'layout'" :editor="editor" :video="canvasRef?.video" :time="time" @seek="seek" />
           <EditorHookPanel v-else-if="tab === 'hook'" :editor="editor" @seek="seek" />
           <EditorTrimPanel v-else-if="tab === 'trim'" :editor="editor" />
+          <EditorScorePanel v-else-if="tab === 'score'" :editor="editor" />
           <EditorExportPanel v-else v-model:confirm-open="exportOpen" :editor="editor" />
         </UCard>
       </div>

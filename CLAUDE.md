@@ -24,6 +24,7 @@ Run `pnpm test` and `pnpm typecheck` before calling a change done.
 - **Storage keys, not paths.** Files go through the `Storage` interface; the DB stores keys like `projects/<id>/source.mp4`.
 - **Times are UTC** in the DB; the timezone is stored separately.
 - Server routes stay thin: logic lives in `packages/core` (or `packages/media` for tool wrappers) so the worker and MCP can reuse it.
+- Nuxt 4's `useFetch` data is a shallow ref: pass `deep: true` when a form edits its fields in place (`v-model="data.x"`).
 - `@clipstudio/core/shared` is the only core entry the browser may import (no Node/DB deps). Type-only imports are fine anywhere.
 - Secrets stay server-side and out of git. Never print `.env` values.
 
@@ -65,6 +66,9 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
   (boxes per sample + scene cuts). `resolveLayout`/`autoFrame` turn it into a smoothed crop path; new clips default
   to `layout.auto = true`. `pnpm --filter @clipstudio/worker exec tsx src/dev/faces.ts <projectId> <ms> <w> <h> --sheet`
   draws detections to `data/dev/faces-sheet.jpg`.
+- Layout modes: fill, fit, split, screen. Screen (`screenPanels`) keeps a screen recording at full width (480–1152 px
+  tall) and fills the rest with a face window; `layout.screen` is optional (older clips) and falls back to
+  `DEFAULT_SCREEN`. `facecamWindow` places the face window from the face track (face ≈ 40% of its height, zoom ≤ 8).
 - `snapToWords` only moves an edge that falls inside a word; edges in silence stay (visual moments aren't trimmed).
 
 ## Posting (YouTube, TikTok)
@@ -88,6 +92,11 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
   YouTube: the job runs now and uploads private + `publishAt` (scheduled posts are always public at the time).
   TikTok: the job's `runAt` is the time. A TikTok post more than 10 min late is `missed`, never posted silently.
 - The worker runs `caffeinate -i -m` while TikTok posts are due within 12 h.
+- Insights: when a post goes `published`/`scheduled`, `PostService.setStatus` queues `post.stats` at live + 48 h and
+  + 7 d (`collectPostStats` → `post_stats`, `ageHours` = hours since live). TikTok needs the `video.list` scope (Display
+  API); older TikTok sign-ins are skipped until reconnected. After TikTok publishes, `remoteId` is the video id.
+  `shared/insights.ts` scores each post as views ÷ its account's median two-day views and suggests a same-length window
+  only with ≥ 10 measured posts, ≥ 5 in the window, and ≥ 15 % lift; applying it is a confirmed settings change.
 - Claude's `propose_schedule` creates a `schedule` proposal; the Inbox opens `/schedule?proposal=…` pre-filled.
 
 ## Claude / MCP
@@ -98,6 +107,31 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
 - `server/middleware/00.security.ts` rejects unknown Host headers (DNS rebinding) and cross-site Origins on mutating
   `/api` and `/mcp` requests. There is no MCP token; the app binds to 127.0.0.1. `ALLOWED_HOSTS` adds hosts if ever needed.
 - Test the endpoint with curl: POST JSON-RPC with `accept: application/json, text/event-stream`.
+
+## Clip evaluation (the Shorts rubric)
+
+- `shared/evaluation.ts` holds `CLIP_RUBRIC` (4 pillars: hook 40 %, pacing 30 %, payoff 20 %, standalone 10 %, plus the
+  mute test), the 22–45 s sweet spot (`lengthAdvice`: warn under 15 s and over 50 s) and `trimLeadIn`. The rubric goes
+  into the MCP instructions and every in-app prompt, so all evaluators judge the same way.
+- `clips.evaluation` (JSON) is a note: `ClipService.checkEvaluation` computes the total itself (never trusts the model's
+  arithmetic), snaps suggested edges to words and drops suggestions within 0.3 s. `score` = 10 × total.
+  `setEvaluation` doesn't bump the clip version; a suggested trim only moves the clip when the user applies it
+  (editor: undoable edit; Inbox: "Approve trimmed" → `applySuggestedTrim`). `evaluationState` says current/trimmed/stale.
+- Proposals from models get `trimLeadIn`: an opening greeting sentence and up to four filler words are cut, unless that
+  leaves under 15 s or under half the clip. Manual clips are never trimmed.
+- Evaluators: Claude via MCP (`propose_clips` with `evaluation`, `evaluate_clip` for existing clips, `evaluate_clips`
+  prompt), and in-app `clips.evaluate` (Claude also gets four frames per clip for the mute test; Ollama is text-only).
+
+## In-app AI (optional)
+
+- `packages/ai`: `findClips` builds one prompt (timed sentences + existing clips + `CLIP_PICKING_RULES`, shared with the MCP
+  instructions) and asks Claude (`@anthropic-ai/sdk`, streamed, structured output, adaptive thinking, effort high,
+  `fallbacks: "default"` on Opus/Sonnet) or Ollama (`/api/chat` with a JSON-schema `format`). Picks go through
+  `ProposalService.proposeClips`, so they land in the Inbox like Claude's.
+- Settings key `ai.settings` (`core/src/ai.ts`); the Anthropic key is sealed with the secret key and only unsealed by the
+  worker (`aiCredentials`), falling back to `ANTHROPIC_API_KEY`. The browser only sees `hasAnthropicKey`.
+- `clips.find` runs once (`maxAttempts: 1`): a retry costs money. The UI shows a cost estimate (`estimateFindCost`) before.
+- Tests use fake Anthropic (SSE) and Ollama servers; never call the real API in tests.
 
 ## Testing notes
 

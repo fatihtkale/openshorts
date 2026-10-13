@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { and, asc, desc, eq, gte, inArray, isNull, lt, or } from 'drizzle-orm'
 import { seal, unseal } from '../crypto'
 import type { Db } from '../db/client'
-import { accounts, clips, posts, projects, renders, scheduleBatches, type AccountRow, type JobRow, type PostRow } from '../db/schema'
+import { accounts, clips, posts, postStats, projects, renders, scheduleBatches, type AccountRow, type JobRow, type PostRow } from '../db/schema'
 import { ProjectError } from '../errors'
 import type { JobQueue } from '../jobs/queue'
 import {
@@ -16,6 +16,7 @@ import {
   type PostDto,
   type PostStatus,
 } from '../shared/social'
+import { STATS_AGES_HOURS, type InsightPost } from '../shared/insights'
 
 /** Tokens as stored (encrypted). Times are epoch ms. */
 export interface StoredTokens {
@@ -345,7 +346,75 @@ export class PostService {
   }
 
   setStatus(id: string, status: PostStatus, extra: Partial<Pick<PostRow, 'remoteId' | 'url' | 'error' | 'publishedAt'>> = {}): void {
+    const before = this.get(id)?.status
     this.update(id, { status, ...extra })
+    if ((status === 'published' || status === 'scheduled') && before !== 'published' && before !== 'scheduled') this.planStats(id)
+  }
+
+  /** When the post is (or will be) public: YouTube's scheduled time, or when it went up. */
+  private liveAt(post: PostRow): number | null {
+    if (post.status === 'scheduled') return post.scheduledAt?.getTime() ?? null
+    return post.publishedAt?.getTime() ?? null
+  }
+
+  /** Queues view-count checks about 48 hours and 7 days after the post goes live. */
+  private planStats(id: string): void {
+    const post = this.get(id)
+    const live = post && this.liveAt(post)
+    if (!post || !live || !post.remoteId) return
+    for (const hours of STATS_AGES_HOURS) {
+      this.queue.enqueue('post.stats', { postId: id }, { projectId: post.projectId, runAt: new Date(live + hours * 3_600_000) })
+    }
+  }
+
+  /** Stores a view-count reading. A scheduled YouTube video that has gone public counts as published from then on. */
+  recordStats(id: string, stats: { views: number; likes: number | null; comments: number | null; shares: number | null }): void {
+    const post = this.require(id)
+    const now = this.now()
+    const live = this.liveAt(post)
+    if (!live) return
+    this.db.transaction(() => {
+      this.db
+        .insert(postStats)
+        .values({ id: randomUUID(), postId: id, ageHours: (now.getTime() - live) / 3_600_000, ...stats, capturedAt: now })
+        .run()
+      if (post.status === 'scheduled' && live <= now.getTime()) this.update(id, { status: 'published', publishedAt: new Date(live) })
+    })
+  }
+
+  /** Every live post with its view-count readings, for the Insights page. */
+  insights(): InsightPost[] {
+    const rows = this.db
+      .select({ post: posts, clipTitle: clips.title, accountName: accounts.displayName })
+      .from(posts)
+      .innerJoin(clips, eq(clips.id, posts.clipId))
+      .leftJoin(accounts, eq(accounts.id, posts.accountId))
+      .where(inArray(posts.status, ['published', 'scheduled']))
+      .all()
+    if (!rows.length) return []
+    const readings = this.db
+      .select()
+      .from(postStats)
+      .where(inArray(postStats.postId, rows.map((r) => r.post.id)))
+      .orderBy(asc(postStats.capturedAt))
+      .all()
+    const byPost = new Map<string, typeof readings>()
+    for (const r of readings) byPost.set(r.postId, [...(byPost.get(r.postId) ?? []), r])
+    const now = this.now().getTime()
+    return rows
+      .map((r) => ({ ...r, live: this.liveAt(r.post) }))
+      .filter((r): r is typeof r & { live: number } => r.live !== null && r.live <= now)
+      .map((r) => ({
+        id: r.post.id,
+        platform: r.post.platform,
+        accountId: r.post.accountId ?? 'gone',
+        accountName: r.accountName,
+        title: r.clipTitle,
+        url: r.post.url,
+        liveAt: r.live,
+        readings: (byPost.get(r.post.id) ?? []).map((s) => ({ ageHours: s.ageHours, views: s.views, likes: s.likes, comments: s.comments, shares: s.shares })),
+      }))
+      .sort((a, b) => b.liveAt - a.liveAt)
   }
 
   jobGaveUp(job: JobRow, outcome: 'failed' | 'cancelled'): void {

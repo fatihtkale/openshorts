@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CLIP_IDEAL_MAX_MS, CLIP_IDEAL_MIN_MS, formatTimecode, type ClipDto, type ProposalDto } from '@clipstudio/core/shared'
+import { formatTimecode, lengthAdvice, type ClipDto, type ProposalDto } from '@clipstudio/core/shared'
 
 const props = defineProps<{ proposal: ProposalDto; focusedClipId?: string | null }>()
 const emit = defineEmits<{ updated: [proposal: ProposalDto]; focus: [clipId: string] }>()
@@ -58,11 +58,17 @@ async function approveImport() {
 }
 
 function lengthNote(c: ClipDto) {
-  const ms = c.endMs - c.startMs
-  if (ms < CLIP_IDEAL_MIN_MS) return 'Short for a Short'
-  if (ms > CLIP_IDEAL_MAX_MS) return 'Long for a Short'
-  return null
+  const advice = lengthAdvice(c.endMs - c.startMs)
+  return advice.tone === 'good' ? null : advice
 }
+
+/** "Approve trimmed": move the edges to the evaluation's suggestion, then approve. */
+async function approveTrimmed(clip: ClipDto) {
+  const key = clip.id + 't'
+  const trimmed = await post<ClipDto>(`/api/clips/${clip.id}/apply-trim`, { version: clip.version }, key)
+  if (trimmed) await decide([clip], true, key)
+}
+const hasTrim = (c: ClipDto) => c.evaluation?.suggestedStartMs != null && c.evaluation.evaluatedStartMs === c.startMs && c.evaluation.evaluatedEndMs === c.endMs
 
 defineExpose({ decide })
 </script>
@@ -115,20 +121,30 @@ defineExpose({ decide })
         <div class="min-w-0 flex-1 space-y-2">
           <div class="flex items-start gap-2">
             <p class="flex-1 font-medium text-highlighted">{{ clip.title }}</p>
-            <UBadge v-if="clip.score !== null" :label="`${clip.score}`" icon="i-lucide-flame" color="warning" variant="subtle" size="sm" />
+            <UBadge v-if="clip.score !== null && !clip.evaluation" :label="`${clip.score}`" icon="i-lucide-flame" color="warning" variant="subtle" size="sm" />
           </div>
           <p class="text-xs text-muted tabular-nums">
             {{ formatTimecode(clip.startMs / 1000) }}–{{ formatTimecode(clip.endMs / 1000) }} · {{ formatTimecode((clip.endMs - clip.startMs) / 1000) }}
-            <span v-if="lengthNote(clip)" class="text-warning"> · {{ lengthNote(clip) }}</span>
+            <span v-if="lengthNote(clip)" :class="lengthNote(clip)!.tone === 'warn' ? 'text-warning' : 'text-muted'"> · {{ lengthNote(clip)!.text }}</span>
           </p>
           <p v-if="clip.hook" class="text-sm"><span class="text-muted">Hook:</span> “{{ clip.hook }}”</p>
           <p v-if="clip.reason" class="text-sm text-muted">{{ clip.reason }}</p>
           <div v-if="clip.keywords.length" class="flex flex-wrap gap-1">
             <UBadge v-for="k in clip.keywords" :key="k" :label="k" color="neutral" variant="outline" size="sm" />
           </div>
+          <ClipScore v-if="clip.evaluation" :evaluation="clip.evaluation" :range="clip" compact class="rounded-md bg-elevated/50 p-3" />
           <div class="flex gap-2 pt-1">
             <template v-if="clip.status === 'proposed' && pending">
               <UButton label="Approve" icon="i-lucide-check" size="sm" :loading="busy === clip.id + 'y'" @click.stop="decide([clip], true, clip.id + 'y')" />
+              <UButton
+                v-if="hasTrim(clip)"
+                label="Approve trimmed"
+                icon="i-lucide-scissors"
+                size="sm"
+                variant="soft"
+                :loading="busy === clip.id + 't'"
+                @click.stop="approveTrimmed(clip)"
+              />
               <UButton label="Reject" icon="i-lucide-x" color="neutral" variant="outline" size="sm" :loading="busy === clip.id + 'n'" @click.stop="decide([clip], false, clip.id + 'n')" />
             </template>
             <UBadge v-else-if="clip.status === 'approved'" label="Approved" icon="i-lucide-check" color="success" variant="subtle" />

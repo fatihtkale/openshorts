@@ -3,6 +3,7 @@ import { hostname } from 'node:os'
 import { socialApps } from '@clipstudio/social'
 import {
   AccountService,
+  aiCredentials,
   ClipService,
   createDb,
   getConfig,
@@ -12,6 +13,7 @@ import {
   ModelService,
   PostService,
   ProjectService,
+  ProposalService,
   RenderService,
   TranscriptService,
   setSetting,
@@ -28,14 +30,18 @@ const storage = new LocalStorage(config.storageDir)
 const projects = new ProjectService(db, queue, storage)
 const transcripts = new TranscriptService(db, queue)
 const models = new ModelService(db, config.modelsDir)
+const clips = new ClipService(db)
+const secretKey = loadSecretKey(config.dataDir)
 const deps = {
   projects,
   transcripts,
   models,
-  clips: new ClipService(db),
+  clips,
+  proposals: new ProposalService(db, clips, projects),
+  ai: () => aiCredentials(db, secretKey),
   renders: new RenderService(db, queue),
   posts: new PostService(db, queue),
-  accounts: new AccountService(db, loadSecretKey(config.dataDir)),
+  accounts: new AccountService(db, secretKey),
   socialApps: socialApps(config),
   storage,
 }

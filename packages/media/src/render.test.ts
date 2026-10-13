@@ -77,10 +77,11 @@ describe.skipIf(!hasFfmpeg)('renderClip (real ffmpeg)', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  for (const mode of ['fill', 'fit', 'split'] as const) {
+  for (const mode of ['fill', 'fit', 'split', 'screen'] as const) {
     it(`exports a vertical ${mode} clip with a cut, captions and a hook`, async () => {
       const edit = defaultEdit({ hook: 'Watch this' })
       edit.layout.mode = mode
+      if (mode === 'screen') edit.layout.screen = { screen: { x: 0.5, y: 0.5, zoom: 1 }, face: { x: 0.9, y: 0.85, zoom: 4 }, faceOnTop: true }
       const out = join(dir, `${mode}.mp4`)
       const result = await renderClip({
         src: join(dir, 'src.mp4'),

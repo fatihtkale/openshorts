@@ -1,3 +1,5 @@
+import { CLIP_PICKING_RULES, CLIP_RUBRIC } from '@clipstudio/core/shared'
+
 /** Sent to every MCP client on connect; Claude reads it before using the tools. */
 export const SERVER_INSTRUCTIONS = `Clip Studio turns long videos into short vertical clips for TikTok, YouTube Shorts and Reels. You help the user find the best moments.
 
@@ -9,17 +11,24 @@ Finding clips
 1. list_projects, and pick the project. It must be "ready", with a "ready" transcript.
 2. list_clips, so you don't propose what already exists.
 3. get_transcript and read ALL of it. It comes in pages; keep calling with nextFromSec until there are no more.
-4. Pick moments that work on their own, with no earlier context: a strong first line (the first 3 seconds decide whether people keep watching), one complete idea, and a payoff at the end. Good: surprising claims, stories, strong opinions, practical tips, emotional or funny moments, quotable lines. Skip: intros, outros, sponsor reads, "as I said earlier", and anything that trails off.
-5. Length: 15–60 s is ideal (hard limits 3–180 s). Start on the first word of a sentence and end right after a sentence ends; the app snaps the edges to word boundaries.
-6. When the picture matters (demos, reactions, on-screen text) or you're unsure, check candidates with get_frames.
-7. Call propose_clips ONCE with all clips, best first. For each: a title (60 characters or fewer, honest), a hook (the on-screen text for the first seconds, 10 words or fewer), the reason it works, a 0–100 score, 3–6 keywords from the spoken words (used to highlight captions), and optionally a few emojis for key spoken words.
-8. Tell the user how many clips you proposed, the best two or three in a line each, and that they're waiting in the Inbox.
+4. Choose clips by these rules:
+${CLIP_PICKING_RULES}
+5. When the picture matters (demos, reactions, on-screen text, the mute test) or you're unsure, check candidates with get_frames.
+6. Evaluate every candidate with the rubric below and drop the weak ones. Call propose_clips ONCE with the rest, best first, each with its evaluation (the app computes the score from it).
+7. Tell the user how many clips you proposed, the best two or three in a line each with their score, and that they're waiting in the Inbox.
+
+Evaluating clips
+${CLIP_RUBRIC}
+- To judge existing clips (including ones the user made): list_clips for ids, get_transcript around each clip (a little before and after, so you can suggest moving the edges), get_frames for the mute test, then evaluate_clip per clip. It saves a note; it never changes the clip.
 
 Posting
 - propose_schedule with exported clips (list_clips shows "exported") and a day. The user picks accounts, checks times and texts in the scheduler, and confirms. Default posting hours are 12:00–21:00 US Eastern.
 
 Importing videos
 - propose_import with a YouTube link. The user confirms the download in the Inbox. Only suggest videos the user owns or may reuse.`
+
+export const EVALUATE_CLIPS_PROMPT = (opts: { project?: string }) =>
+  `Evaluate the clips${opts.project?.trim() ? ` in the Clip Studio project "${opts.project.trim()}"` : ' in my most recent Clip Studio project that has clips'} with the 4-pillar Shorts rubric: read the transcript around each clip, check frames for the mute test, then save each evaluation with evaluate_clip. Finish with a short ranking and the trims you'd make.`
 
 export const FIND_CLIPS_PROMPT = (opts: { project?: string; count?: string; focus?: string }) =>
   [

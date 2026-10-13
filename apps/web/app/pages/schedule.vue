@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   COMMON_TIME_ZONES,
+  computeInsights,
   formatInZone,
   formatTimecode,
   PLATFORM_LABELS,
@@ -13,6 +14,7 @@ import {
   type AccountDto,
   type CalendarPost,
   type ClipDto,
+  type InsightPost,
   type PostDto,
   type ProposalDto,
   type ScheduleDefaults,
@@ -146,6 +148,14 @@ watch(
   },
   { immediate: true },
 )
+
+// What past posts say about the best hours (only once there's enough data).
+const { data: insightPosts } = await useFetch<{ posts: InsightPost[] }>('/api/insights', { server: false, default: () => ({ posts: [] }) })
+const bestWindow = computed(() => {
+  if (!insightPosts.value.posts.length) return null
+  const s = computeInsights(insightPosts.value.posts, { timeZone: timeZone.value, windowStart: windowStart.value, windowEnd: windowEnd.value }).suggestion
+  return s && (s.start !== windowStart.value || s.end !== windowEnd.value) ? s : null
+})
 
 // A proposal from Claude pre-fills the clips (and day).
 const proposalId = computed(() => (typeof route.query.proposal === 'string' ? route.query.proposal : null))
@@ -477,6 +487,16 @@ const platformOf = (id: string) => accounts.value.find((a) => a.id === id)!.plat
             <UInput v-model="windowEnd" type="time" class="w-full" />
           </UFormField>
         </div>
+        <UAlert
+          v-if="bestWindow"
+          class="mt-4"
+          color="info"
+          variant="subtle"
+          icon="i-lucide-lightbulb"
+          :title="`Your posts did best between ${bestWindow.start} and ${bestWindow.end}`"
+          :description="bestWindow.lift ? `${(1 + bestWindow.lift).toFixed(1)}× the views of ${windowStart}–${windowEnd}, across ${bestWindow.posts} posts.` : `Across ${bestWindow.posts} posts.`"
+          :actions="[{ label: 'Use these hours', color: 'info', variant: 'outline', size: 'xs', onClick: () => { windowStart = bestWindow!.start; windowEnd = bestWindow!.end } }]"
+        />
         <URadioGroup
           v-model="mode"
           class="mt-5"

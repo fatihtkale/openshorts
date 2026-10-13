@@ -1,4 +1,5 @@
-import type { ClipLayout, CropKeyframe, Range } from './types'
+import { windowRect } from './layout'
+import type { ClipLayout, CropKeyframe, PanelWindow, Range } from './types'
 
 /** A detected face, in 0..1 of the source frame. */
 export interface FaceBox {
@@ -152,3 +153,27 @@ export function resolveLayout(layout: ClipLayout, track: FaceTrack | null, clip:
   if (layout.mode !== 'fill' || !layout.auto || !track) return layout
   return { ...layout, keyframes: autoFrame(track, clip) }
 }
+
+/**
+ * A still window around the speaker for screen mode (a facecam usually sits in a corner): centred on the median
+ * position of the largest face in the clip, zoomed so the face takes about 40% of the window's height.
+ * Null when no face shows up in the clip.
+ */
+export function facecamWindow(track: FaceTrack, clip: Range, aspect: number, srcW: number, srcH: number): PanelWindow | null {
+  const first = Math.max(0, Math.floor(clip.start / track.sampleMs))
+  const last = Math.min(track.frames.length - 1, Math.floor(clip.end / track.sampleMs))
+  const boxes: FaceBox[] = []
+  for (let i = first; i <= last; i++) {
+    const usable = (track.frames[i] ?? []).filter((f) => f.score >= MIN_SCORE)
+    if (usable.length) boxes.push(usable.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a)))
+  }
+  if (!boxes.length) return null
+  const x = median(boxes.map((b) => b.x + b.w / 2))
+  const y = median(boxes.map((b) => b.y + b.h / 2))
+  const faceH = median(boxes.map((b) => b.h)) * srcH
+  const fullH = windowRect(srcW, srcH, aspect, 0.5, 0.5, 1).h
+  const zoom = Math.min(MAX_FACECAM_ZOOM, Math.max(1, fullH / (faceH / 0.4)))
+  return { x, y, zoom: Math.round(zoom * 20) / 20 }
+}
+
+export const MAX_FACECAM_ZOOM = 8

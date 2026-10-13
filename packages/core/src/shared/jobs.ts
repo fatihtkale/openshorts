@@ -64,6 +64,25 @@ export const jobDefinitions = {
     maxAttempts: 3,
     payload: z.object({ postId: z.string() }),
   },
+  'post.stats': {
+    label: 'Check views',
+    group: 'default',
+    maxAttempts: 3,
+    payload: z.object({ postId: z.string() }),
+  },
+  'clips.find': {
+    label: 'Find clips with AI',
+    group: 'default',
+    // Each try costs money and a finished answer may already be in the Inbox, so never retry by itself.
+    maxAttempts: 1,
+    payload: z.object({ projectId: z.string(), count: z.number().int().min(1).max(20), focus: z.string().max(300).optional() }),
+  },
+  'clips.evaluate': {
+    label: 'Evaluate clips with AI',
+    group: 'default',
+    maxAttempts: 1,
+    payload: z.object({ projectId: z.string(), clipIds: z.array(z.string()).min(1).max(20) }),
+  },
   'models.download': {
     label: 'Download speech model',
     group: 'download',

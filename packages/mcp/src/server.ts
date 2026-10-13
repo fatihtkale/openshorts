@@ -1,5 +1,6 @@
 import {
   DOWNLOAD_QUALITIES,
+  MUTE_TEST,
   ProjectError,
   parseYoutubeUrl,
   searchWords,
@@ -14,7 +15,23 @@ import { fetchYoutubeInfo, grabFrame } from '@clipstudio/media'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
-import { FIND_CLIPS_PROMPT, SERVER_INSTRUCTIONS } from './instructions'
+import { EVALUATE_CLIPS_PROMPT, FIND_CLIPS_PROMPT, SERVER_INSTRUCTIONS } from './instructions'
+
+/** A 4-pillar evaluation as Claude sends it (see CLIP_RUBRIC). Times are seconds from the video start. */
+const evaluationSchema = z.object({
+  hook: z.number().min(1).max(10).describe('Hook, seconds 0–3 (weight 40%)'),
+  pacing: z.number().min(1).max(10).describe('Attention and pacing (30%)'),
+  payoff: z.number().min(1).max(10).describe('Payoff and resolution (20%)'),
+  standalone: z.number().min(1).max(10).describe('Standalone context (10%)'),
+  hookNotes: z.string().max(600).describe('Why the first 3 seconds succeed or fail.'),
+  retentionRisk: z.string().max(600).describe('Dead spots or pacing drop-offs, with times.'),
+  payoffNotes: z.string().max(400).describe('Is the promise kept? Does the end loop into the start?'),
+  muteTest: z.enum(MUTE_TEST).describe('Can it be followed on mute?'),
+  muteNotes: z.string().max(300),
+  suggestedStartSec: z.number().min(0).nullable().describe('Better start, or null if the current one is right.'),
+  suggestedEndSec: z.number().positive().nullable().describe('Better end, or null if the current one is right.'),
+  trimNotes: z.string().max(400).describe('What the trim removes and why ("" when no trim).'),
+})
 
 export interface McpDeps {
   projects: ProjectService
@@ -220,14 +237,39 @@ export function createMcpServer(deps: McpDeps): McpServer {
         if (!all.length) return ok('This project has no clips yet.')
         return ok(
           all.map((c) => ({
+            id: c.id,
             title: c.title,
             status: c.status === 'proposed' ? 'waiting in Inbox' : c.status,
             startSec: sec(c.startMs),
             endSec: sec(c.endMs),
             lengthSec: sec(c.endMs - c.startMs),
             hook: c.hook,
+            evaluation: c.evaluation
+              ? `${c.evaluation.total}/10${c.evaluation.evaluatedStartMs !== c.startMs || c.evaluation.evaluatedEndMs !== c.endMs ? ' (clip changed since)' : ''}`
+              : 'not evaluated',
             exported: c.render?.status === 'done' ? (c.render.clipVersion === c.version ? 'yes' : 'yes, but edited since') : 'no',
           })),
+        )
+      }),
+  )
+
+  server.registerTool(
+    'evaluate_clip',
+    {
+      title: 'Save a clip evaluation',
+      description:
+        'Saves your 4-pillar evaluation of an existing clip (ids from list_clips) as a note the user sees in the editor. It does not change the clip: the user decides whether to apply a suggested trim. Read the transcript around the clip (and get_frames for the mute test) first.',
+      inputSchema: { clipId: z.string(), evaluation: evaluationSchema },
+    },
+    ({ clipId, evaluation }) =>
+      guard(() => {
+        const clip = clips.setEvaluation(clipId, evaluation, deps.client ?? 'Claude')
+        const e = clip.evaluation!
+        return ok(
+          [
+            `Saved: ${e.total}/10 for “${clip.title}”. The user sees it in the editor: ${deps.appUrl}/clips/${clip.id}`,
+            e.suggestedStartMs !== null ? `Suggested trim (snapped to words): ${sec(e.suggestedStartMs)}–${sec(e.suggestedEndMs!)} s. Only the user can apply it.` : 'No trim suggested.',
+          ].join('\n'),
         )
       }),
   )
@@ -280,6 +322,7 @@ export function createMcpServer(deps: McpDeps): McpServer {
                 .max(12)
                 .optional()
                 .describe('Emoji to pop up above spoken words (used by the Emoji caption style). One emoji per word.'),
+              evaluation: evaluationSchema.optional().describe('Your 4-pillar evaluation of this clip (the score is computed from it).'),
             }),
           )
           .min(1)
@@ -396,6 +439,18 @@ export function createMcpServer(deps: McpDeps): McpServer {
     },
     (args) => ({
       messages: [{ role: 'user', content: { type: 'text', text: FIND_CLIPS_PROMPT(args) } }],
+    }),
+  )
+
+  server.registerPrompt(
+    'evaluate_clips',
+    {
+      title: 'Evaluate clips',
+      description: 'Ask Claude to score the clips of a project with the 4-pillar Shorts rubric and suggest tighter trims.',
+      argsSchema: { project: z.string().optional().describe('Project name (default: the newest with clips)') },
+    },
+    (args) => ({
+      messages: [{ role: 'user', content: { type: 'text', text: EVALUATE_CLIPS_PROMPT(args) } }],
     }),
   )
 

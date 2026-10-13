@@ -344,7 +344,7 @@ settings        key, value(json)      -- defaults: timezone, window, spread mode
 | 4b ✅ | **Auto-reframe**: face tracking, smoothed crop path, scene-cut aware | Talking-head video stays framed without manual keys |
 | 5 🔧 | **Accounts & publishing** (built; real posting waits for the developer apps): YouTube + TikTok OAuth, single post with a confirm screen, TikTok draft mode. **Then submit both audits** | A clip posted (private/draft) from the app |
 | 6 ✅ | **Scheduler**: wizard with spread modes, ET/local display, calendar, dispatcher, missed-post handling, keep-awake, `propose_posts` | "4 clips across Friday" works end to end, from the UI and from Claude |
-| 7 | **Learning & extras**: views after 48 h → personal best times, optional in-app AI (API key / Ollama), Split/Screen layouts | The scheduler suggests times from your own results |
+| 7 ✅ | **Learning & extras**: views after 48 h and 7 d → Insights page and personal best times (suggested in the scheduler, applied after a confirm), Screen layout (screencast + facecam), optional in-app AI (Claude API key or Ollama), 4-pillar Shorts rubric for finding and evaluating clips (scores, suggested trims, mute test) | The scheduler suggests times from your own results (needs ≥ 10 measured posts, so real data waits on Phase 5's developer apps) |
 | 8 | **Server-readiness** (only if needed): S3 storage driver, Postgres, Redis queue, app login, Playwright e2e | — |
 
 Vitest covers the scheduler maths, caption timing/layout, clip boundary snapping, proposal execution and job retries from Phase 0.
@@ -374,7 +374,7 @@ The whisper model (~1.6 GB for large-v3-turbo) is fetched from the System check 
 ### 8.3 TikTok, needed by Phase 5
 
 1. Create a developer account at developers.tiktok.com, then an app.
-2. Add **Login Kit** and **Content Posting API** (enable Direct Post).
+2. Add **Login Kit**, **Content Posting API** (enable Direct Post) and **Display API** (view counts for Insights).
 3. Register the redirect URI (we'll set up a tunnel URL if TikTok refuses localhost).
 4. Use sandbox mode while building. Unaudited posting needs the TikTok account set to private.
 5. After Phase 5 works: submit the audit (needs a short demo video of the app + a privacy policy page; we'll write both).

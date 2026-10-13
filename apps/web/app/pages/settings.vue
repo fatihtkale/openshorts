@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { COMMON_TIME_ZONES } from '@clipstudio/core/shared'
+import { CLAUDE_MODELS, COMMON_TIME_ZONES, type AiSettingsDto } from '@clipstudio/core/shared'
 
 const { data: status, refresh } = await useFetch<{ client: string | null; lastSeen: number | null; url: string }>('/api/mcp-status', {
   server: false,
@@ -39,7 +39,7 @@ interface Defaults {
   jitterMin: number
   minGapMin: number
 }
-const { data: defaults } = await useFetch<Defaults>('/api/settings/schedule', { server: false })
+const { data: defaults } = await useFetch<Defaults>('/api/settings/schedule', { server: false, deep: true })
 const savingDefaults = ref(false)
 async function saveDefaults() {
   if (!defaults.value) return
@@ -58,6 +58,44 @@ const zoneItems = computed(() =>
     label: z.replace(/_/g, ' '),
     value: z,
   })),
+)
+
+// ── In-app AI (optional) ───────────────────────────────────────────
+const { data: ai } = await useFetch<AiSettingsDto>('/api/settings/ai', { server: false, deep: true })
+const newKey = ref('')
+const savingAi = ref(false)
+const ollamaFound = ref<string[] | null>(null)
+const ollamaError = ref('')
+async function saveAi(extra: { anthropicKey?: string | null } = {}) {
+  if (!ai.value) return
+  savingAi.value = true
+  try {
+    const { provider, anthropicModel, ollamaUrl, ollamaModel } = ai.value
+    ai.value = await $fetch<AiSettingsDto>('/api/settings/ai', { method: 'PUT', body: { provider, anthropicModel, ollamaUrl, ollamaModel, ...extra } })
+    newKey.value = ''
+    toast.add({ title: extra.anthropicKey === null ? 'API key removed' : 'AI settings saved', icon: 'i-lucide-check' })
+  } catch (e) {
+    toast.add({ title: 'Could not save', description: (e as { statusMessage?: string }).statusMessage ?? (e as Error).message, color: 'error' })
+  } finally {
+    savingAi.value = false
+  }
+}
+async function checkOllama() {
+  if (!ai.value) return
+  ollamaError.value = ''
+  ollamaFound.value = null
+  try {
+    ollamaFound.value = (await $fetch<{ models: string[] }>('/api/settings/ai/ollama-models', { query: { url: ai.value.ollamaUrl } })).models
+    if (!ai.value.ollamaModel && ollamaFound.value[0]) ai.value.ollamaModel = ollamaFound.value[0]
+  } catch (e) {
+    ollamaError.value = (e as { statusMessage?: string }).statusMessage ?? (e as Error).message
+  }
+}
+watch(
+  () => ai.value?.provider,
+  (p) => {
+    if (p === 'ollama' && ollamaFound.value === null) void checkOllama()
+  },
 )
 
 const tools = [
@@ -138,6 +176,69 @@ const tools = [
             </ul>
           </section>
         </div>
+      </UCard>
+
+      <UCard v-if="ai">
+        <template #header>
+          <h2 class="font-semibold">In-app AI <UBadge label="Optional" color="neutral" variant="subtle" size="sm" class="ml-1" /></h2>
+          <p class="text-sm text-muted">
+            Adds a “Find clips with AI” button to projects, for when Claude Code or Claude Desktop isn't at hand. Each run is confirmed
+            first and its picks wait in the Inbox like Claude's.
+          </p>
+        </template>
+        <div class="space-y-5 text-sm">
+          <URadioGroup
+            v-model="ai.provider"
+            orientation="horizontal"
+            :items="[
+              { label: 'Off', value: 'off' },
+              { label: 'Claude (API key)', value: 'anthropic' },
+              { label: 'Ollama (on this Mac)', value: 'ollama' },
+            ]"
+          />
+
+          <template v-if="ai.provider === 'anthropic'">
+            <UFormField label="Model">
+              <USelect
+                v-model="ai.anthropicModel"
+                :items="CLAUDE_MODELS.map((m) => ({ label: `${m.label} · ${m.note}`, value: m.id as string }))"
+                value-key="value"
+                class="w-full sm:w-80"
+              />
+            </UFormField>
+            <UFormField label="Anthropic API key" :description="ai.hasAnthropicKey ? 'A key is saved (encrypted on this Mac). Paste a new one to replace it.' : ai.envKey ? 'Using ANTHROPIC_API_KEY from .env. Paste a key to save one here instead.' : 'Create one at console.anthropic.com. It is stored encrypted and only used by this app.'">
+              <div class="flex flex-wrap gap-2">
+                <UInput v-model="newKey" type="password" placeholder="sk-ant-…" autocomplete="off" class="min-w-0 flex-1" />
+                <UButton label="Save key" :disabled="newKey.trim().length < 20" :loading="savingAi" @click="saveAi({ anthropicKey: newKey })" />
+                <ConfirmButton v-if="ai.hasAnthropicKey" label="Remove key" confirm-label="Yes, remove it" size="md" @confirm="saveAi({ anthropicKey: null })" />
+              </div>
+            </UFormField>
+            <p class="text-xs text-muted">Billed to your key: about $0.30 for an hour of talk with Opus 5.5, less with Sonnet or Haiku. Each run shows its estimate first.</p>
+          </template>
+
+          <template v-if="ai.provider === 'ollama'">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Ollama address">
+                <div class="flex gap-2">
+                  <UInput v-model="ai.ollamaUrl" class="min-w-0 flex-1" />
+                  <UButton label="Check" color="neutral" variant="outline" @click="checkOllama" />
+                </div>
+              </UFormField>
+              <UFormField label="Model">
+                <USelect v-if="ollamaFound?.length" v-model="ai.ollamaModel" :items="ollamaFound" class="w-full" />
+                <UInput v-else v-model="ai.ollamaModel" placeholder="e.g. qwen3:14b" class="w-full" />
+              </UFormField>
+            </div>
+            <p v-if="ollamaError" class="text-xs text-error">{{ ollamaError }}</p>
+            <p v-else-if="ollamaFound && !ollamaFound.length" class="text-xs text-muted">Ollama is running but has no models. Run <code class="rounded bg-elevated px-1">ollama pull qwen3:14b</code> in Terminal.</p>
+            <p class="text-xs text-muted">Free and private, but small models pick less well than Claude, and long videos may be too much for them.</p>
+          </template>
+        </div>
+        <template #footer>
+          <div class="flex justify-end">
+            <UButton label="Save" :loading="savingAi" @click="saveAi()" />
+          </div>
+        </template>
       </UCard>
 
       <UCard v-if="defaults">

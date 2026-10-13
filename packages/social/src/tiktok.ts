@@ -13,7 +13,8 @@ export const TIKTOK_ENDPOINTS: TiktokEndpoints = {
   api: 'https://open.tiktokapis.com',
 }
 
-export const TIKTOK_SCOPES = ['user.info.basic', 'video.publish', 'video.upload']
+/** video.list (Display API) is for reading view counts of posted videos. */
+export const TIKTOK_SCOPES = ['user.info.basic', 'video.publish', 'video.upload', 'video.list']
 
 export const TIKTOK_PRIVACY = ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'] as const
 export type TiktokPrivacy = (typeof TIKTOK_PRIVACY)[number]
@@ -296,4 +297,20 @@ export async function tiktokStatus(
 
 export function tiktokVideoUrl(username: string, postId: string): string {
   return `https://www.tiktok.com/@${username}/video/${postId}`
+}
+
+/** View, like, comment and share counts for up to 20 public videos (needs the video.list scope). */
+export async function tiktokStats(token: string, videoIds: string[], ep = TIKTOK_ENDPOINTS): Promise<Map<string, { views: number; likes: number | null; comments: number | null; shares: number | null }>> {
+  const out = new Map<string, { views: number; likes: number | null; comments: number | null; shares: number | null }>()
+  if (!videoIds.length) return out
+  const data = await call<{ videos?: { id: string | number; view_count?: number; like_count?: number; comment_count?: number; share_count?: number }[] }>(
+    ep,
+    '/v2/video/query/?fields=id,view_count,like_count,comment_count,share_count',
+    token,
+    { body: { filters: { video_ids: videoIds.slice(0, 20) } } },
+  )
+  for (const v of data.videos ?? []) {
+    out.set(String(v.id), { views: v.view_count ?? 0, likes: v.like_count ?? null, comments: v.comment_count ?? null, shares: v.share_count ?? null })
+  }
+  return out
 }

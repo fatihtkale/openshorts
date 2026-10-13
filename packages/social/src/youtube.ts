@@ -214,3 +214,26 @@ export async function youtubeUpload(
 export function youtubeVideoUrl(videoId: string): string {
   return `https://www.youtube.com/shorts/${videoId}`
 }
+
+export interface VideoStats {
+  views: number
+  likes: number | null
+  comments: number | null
+  shares: number | null
+}
+
+/** View, like and comment counts for up to 50 videos (needs the youtube.readonly scope). */
+export async function youtubeStats(token: string, videoIds: string[], ep = YOUTUBE_ENDPOINTS): Promise<Map<string, VideoStats>> {
+  const out = new Map<string, VideoStats>()
+  if (!videoIds.length) return out
+  const data = await api<{ items?: { id: string; statistics?: { viewCount?: string; likeCount?: string; commentCount?: string } }[] }>(
+    `${ep.api}/videos?part=statistics&id=${videoIds.slice(0, 50).map(encodeURIComponent).join(',')}`,
+    token,
+  )
+  for (const item of data.items ?? []) {
+    const s = item.statistics ?? {}
+    const n = (v?: string) => (v === undefined ? null : Number(v))
+    out.set(item.id, { views: Number(s.viewCount ?? 0), likes: n(s.likeCount), comments: n(s.commentCount), shares: null })
+  }
+  return out
+}

@@ -5,6 +5,7 @@ import { TRANSCRIPT_STATUSES, type Word } from '../shared/transcripts'
 import { PLATFORMS, POST_STATUSES, type TiktokPostOptions, type YoutubePostOptions } from '../shared/social'
 import type { ClipEdit } from '@clipstudio/captions'
 import { CLIP_ORIGINS, CLIP_STATUSES, PROPOSAL_KINDS, PROPOSAL_STATUSES, RENDER_STATUSES } from '../shared/clips'
+import type { ClipEvaluation } from '../shared/evaluation'
 
 export const jobs = sqliteTable(
   'jobs',
@@ -143,6 +144,8 @@ export const clips = sqliteTable(
     reason: text('reason'),
     score: integer('score'),
     keywords: text('keywords', { mode: 'json' }).$type<string[]>().notNull(),
+    /** The 4-pillar judgement (see shared/evaluation.ts); a note, never applied by itself. */
+    evaluation: text('evaluation', { mode: 'json' }).$type<ClipEvaluation>(),
     origin: text('origin', { enum: CLIP_ORIGINS }).notNull(),
     status: text('status', { enum: CLIP_STATUSES }).notNull(),
     /** Layout, captions, hook and trims. Null until first edited (defaults apply). */
@@ -240,6 +243,25 @@ export const posts = sqliteTable(
   (t) => [index('posts_clip_idx').on(t.clipId), index('posts_status_idx').on(t.status), index('posts_scheduled_idx').on(t.scheduledAt)],
 )
 
+/** View counts of a post at a moment (taken about 48 hours and 7 days after it went live). */
+export const postStats = sqliteTable(
+  'post_stats',
+  {
+    id: text('id').primaryKey(),
+    postId: text('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    /** Hours since the post went live when this was read. */
+    ageHours: real('age_hours').notNull(),
+    views: integer('views').notNull(),
+    likes: integer('likes'),
+    comments: integer('comments'),
+    shares: integer('shares'),
+    capturedAt: integer('captured_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('post_stats_post_idx').on(t.postId)],
+)
+
 export type JobRow = typeof jobs.$inferSelect
 export type ProjectRow = typeof projects.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
@@ -249,3 +271,4 @@ export type ProposalRow = typeof proposals.$inferSelect
 export type RenderRow = typeof renders.$inferSelect
 export type AccountRow = typeof accounts.$inferSelect
 export type PostRow = typeof posts.$inferSelect
+export type PostStatsRow = typeof postStats.$inferSelect

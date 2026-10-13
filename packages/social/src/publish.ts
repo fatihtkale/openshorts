@@ -198,7 +198,8 @@ async function publishToTiktok(
     const s = await tiktokStatus(await accessToken(accounts, apps, account.id, deps.endpoints), publishId, ep)
     if (s.status === 'PUBLISH_COMPLETE') {
       const url = s.postIds[0] ? tiktokVideoUrl(creator.username, s.postIds[0]) : null
-      posts.setStatus(post.id, 'published', { url, publishedAt: new Date() })
+      // From here on remoteId is the video id (for view counts), no longer the publish id.
+      posts.setStatus(post.id, 'published', { url, publishedAt: new Date(), remoteId: s.postIds[0] ?? publishId })
       return { status: 'published', url }
     }
     if (s.status === 'SEND_TO_USER_INBOX') {

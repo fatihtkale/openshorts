@@ -17,6 +17,7 @@ import {
   pageAt,
   paginate,
   panelRect,
+  screenPanels,
   type CaptionStyle,
   type CaptionWord,
   type ClipLayout,
@@ -105,6 +106,16 @@ export function layoutFilter(
       `[a]${crop(top)},scale=${OUT_W}:${OUT_H / 2}:flags=lanczos,setsar=1[top]`,
       `[b]${crop(bottom)},scale=${OUT_W}:${OUT_H / 2}:flags=lanczos,setsar=1[bot]`,
       '[top][bot]vstack[v]',
+    ].join(';')
+  }
+  if (layout.mode === 'screen') {
+    const p = screenPanels(layout, srcW, srcH)
+    const crop = (r: { x: number; y: number; w: number; h: number }) => `crop=${even(r.w)}:${even(r.h)}:${Math.round(r.x)}:${Math.round(r.y)}`
+    return [
+      '[base]split[a][b]',
+      `[a]${crop(p.screen.src)},scale=${OUT_W}:${p.screen.out.h}:flags=lanczos,setsar=1[scr]`,
+      `[b]${crop(p.face.src)},scale=${OUT_W}:${p.face.out.h}:flags=lanczos,setsar=1[face]`,
+      p.face.out.y === 0 ? '[face][scr]vstack[v]' : '[scr][face]vstack[v]',
     ].join(';')
   }
   const c = opts.firstCrop

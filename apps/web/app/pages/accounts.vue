@@ -40,7 +40,7 @@ const platforms: { id: Platform; icon: string; envKeys: [string, string]; consol
     consoleLabel: 'TikTok for Developers',
     steps: [
       'Create an app and choose the Desktop platform.',
-      'Add the products Login Kit and Content Posting API (switch on Direct Post).',
+      'Add the products Login Kit, Content Posting API (switch on Direct Post) and Display API (for view counts on Insights).',
       'Login Kit: add the redirect address below.',
       'Put the client key and secret in .env and restart the app.',
     ],

@@ -26,7 +26,7 @@ onJobStatusChange((job) => {
 
 const summary = computed(() => {
   const d = draft.value
-  const layouts = { fill: 'Cropped to vertical', fit: 'Whole frame, blurred background', split: 'Split top and bottom' }
+  const layouts = { fill: 'Cropped to vertical', fit: 'Whole frame, blurred background', split: 'Split top and bottom', screen: 'Screen with face' }
   return [
     { label: 'Length', value: formatTimecode(props.editor.duration.value / 1000) },
     { label: 'Picture', value: layouts[d.edit.layout.mode] + (d.edit.layout.mode === 'fill' && d.edit.layout.keyframes.length > 1 ? ', moving' : '') },
