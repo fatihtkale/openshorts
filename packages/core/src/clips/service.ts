@@ -11,10 +11,12 @@ import {
   snapToWords,
   clipEditSchema,
   type ClipDto,
+  type LibraryClip,
   type ClipStatus,
   type RenderDto,
 } from '../shared/clips'
 import { evaluationInputSchema, evaluationTotal, trimLeadIn, type ClipEvaluation, type EvaluationInput } from '../shared/evaluation'
+import { stripHashtags } from '../shared/social'
 import type { Word } from '../shared/transcripts'
 
 export function toRenderDto(row: RenderRow): RenderDto {
@@ -145,6 +147,9 @@ export function checkEvaluation(
   }
 }
 
+const UPLOADED: string[] = ['published', 'scheduled', 'sent_to_inbox', 'processing']
+const WAITING: string[] = ['queued', 'uploading']
+
 export class ClipService {
   constructor(
     private readonly db: Db,
@@ -160,6 +165,33 @@ export class ClipService {
       .all()
     const latest = this.latestRenders(rows.map((r) => r.id))
     return rows.map((r) => toClipDto(r, latest.get(r.id) ?? null))
+  }
+
+  /**
+   * Every approved clip across all projects (the Clips page), newest first, with how many of its posts are already up
+   * (published, or uploaded to wait for their time) and how many are still waiting to be sent.
+   */
+  library(): LibraryClip[] {
+    const rows = this.db
+      .select({ clip: clips, projectName: projects.name })
+      .from(clips)
+      .innerJoin(projects, eq(projects.id, clips.projectId))
+      .where(and(eq(clips.status, 'approved'), isNull(projects.deletedAt)))
+      .orderBy(desc(clips.createdAt))
+      .all()
+    const latest = this.latestRenders(rows.map((r) => r.clip.id))
+    const tally = new Map<string, { uploaded: number; waiting: number }>()
+    for (const p of this.db.select({ clipId: posts.clipId, status: posts.status }).from(posts).all()) {
+      const t = tally.get(p.clipId) ?? { uploaded: 0, waiting: 0 }
+      if (UPLOADED.includes(p.status)) t.uploaded++
+      else if (WAITING.includes(p.status)) t.waiting++
+      tally.set(p.clipId, t)
+    }
+    return rows.map((r) => ({
+      clip: toClipDto(r.clip, latest.get(r.clip.id) ?? null),
+      projectName: r.projectName,
+      ...(tally.get(r.clip.id) ?? { uploaded: 0, waiting: 0 }),
+    }))
   }
 
   /** Approved clips with a finished export, across all projects (what the scheduler can post). */
@@ -211,7 +243,8 @@ export class ClipService {
     const project = this.db.select().from(projects).where(eq(projects.id, projectId)).get()
     if (!project) return { error: 'Project not found' }
     if (project.status !== 'ready' || !project.durationMs) return { error: 'The video has not finished importing' }
-    const title = draft.title.trim()
+    // Hashtags don't belong in clip titles (posts leave them out too; see docs/shorts-playbook.md).
+    const title = stripHashtags(draft.title.trim()) || draft.title.trim()
     if (!title) return { error: 'A title is required' }
     if (!(draft.endMs > draft.startMs)) return { error: 'The end must be after the start' }
     if (draft.startMs < 0 || draft.startMs >= project.durationMs) return { error: 'The start is outside the video' }
@@ -307,7 +340,7 @@ export class ClipService {
       .where(and(eq(clips.projectId, projectId), eq(clips.origin, 'imported')))
       .get()
     if (existing) return null
-    const clip = { startMs: 0, endMs: project.durationMs, title: title.trim().slice(0, 120) || 'Twitch clip', keywords: [] }
+    const clip = { startMs: 0, endMs: project.durationMs, title: (stripHashtags(title.trim()) || title.trim()).slice(0, 120) || 'Twitch clip', keywords: [] }
     return this.insert(projectId, clip, { origin: 'imported', status: 'approved' })
   }
 

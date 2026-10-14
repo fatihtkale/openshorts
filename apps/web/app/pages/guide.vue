@@ -266,7 +266,8 @@ const glossary = [
             </GuideStep>
             <GuideStep :n="6" title="Make it look good" to="#editor" to-label="Editor guide">
               <p>
-                On the project, click <strong>Edit</strong> on a clip. Pick a caption style, check the framing in <strong>Layout</strong>, add a
+                Open <ULink to="/clips" class="text-primary">Clips</ULink> in the sidebar (every clip from every project; <strong>Hide uploaded</strong>
+                keeps the ones already on YouTube out of the way) and click a clip, or click <strong>Edit</strong> on a clip in its project. Pick a caption style, check the framing in <strong>Layout</strong>, add a
                 <strong>Hook</strong>, tighten it in <strong>Trim</strong>. Everything saves by itself; <UKbd value="⌘" /> <UKbd value="Z" /> undoes.
               </p>
             </GuideStep>
@@ -396,6 +397,13 @@ const glossary = [
 
         <!-- 7. Editor -->
         <GuideSection id="editor" title="The editor" icon="i-lucide-wand-sparkles" lead="The preview on the left is exactly what the export will look like.">
+          <p class="text-sm">
+            Find any clip on the <ULink to="/clips" class="text-primary">Clips</ULink> page: search by title, filter by project, and switch
+            <strong>Hide uploaded</strong> off to see clips that are already posted or scheduled on YouTube. Each card shows its score, whether
+            it's exported (or edited since) and whether it's uploaded or waiting to post. Click a card to open it here.
+            To export in bulk, use <strong>Export all</strong> (every shown clip that needs it) or <strong>Select</strong> a few and export those;
+            you confirm the list first, and clips already exported and unchanged are skipped.
+          </p>
           <div class="space-y-3">
             <div class="rounded-lg border border-default p-4">
               <p class="flex items-center gap-2 font-medium"><UIcon name="i-lucide-captions" class="size-4 text-primary" /> Captions</p>

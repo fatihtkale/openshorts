@@ -42,6 +42,22 @@ export interface ClipDto {
   updatedAt: number
 }
 
+/** Whether a clip needs (re-)exporting: never exported, the export failed, or the clip changed since. */
+export function needsExport(clip: Pick<ClipDto, 'version' | 'render'>): boolean {
+  const r = clip.render
+  return !r || r.status === 'failed' || r.clipVersion < clip.version
+}
+
+/** A clip on the Clips page, with where it has been posted. */
+export interface LibraryClip {
+  clip: ClipDto
+  projectName: string
+  /** Posts already on a platform: published, or uploaded and waiting for their publish time. */
+  uploaded: number
+  /** Posts not sent yet (queued, or uploading right now). */
+  waiting: number
+}
+
 export const RENDER_STATUSES = ['queued', 'running', 'done', 'failed'] as const
 export type RenderStatus = (typeof RENDER_STATUSES)[number]
 

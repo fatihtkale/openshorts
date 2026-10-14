@@ -323,6 +323,7 @@ settings        key, value(json)      -- defaults: timezone, window, spread mode
 1. **Projects**: grid, a big "Add video" input, activity tray.
 2. **Inbox**: pending proposals from Claude. A badge count sits in the sidebar.
 3. **Project → Clips**: review grid (approve/reject), manual clip from a transcript selection.
+   **Clips** (sidebar): every clip from every project, search/filter, "Hide uploaded", select or export all in one go.
 4. **Clip editor**: preview + transcript + right panel (Captions · Layout · Hook · Export).
 5. **Schedule wizard** + **Calendar**.
 6. **Accounts**: connect YouTube / TikTok.

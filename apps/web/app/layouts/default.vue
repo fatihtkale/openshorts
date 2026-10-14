@@ -9,6 +9,7 @@ onMounted(startInboxPolling)
 const items = computed<NavigationMenuItem[][]>(() => [
   [
     { label: 'Projects', icon: 'i-lucide-folder-open', to: '/' },
+    { label: 'Clips', icon: 'i-lucide-clapperboard', to: '/clips' },
     {
       label: 'Inbox',
       icon: 'i-lucide-inbox',

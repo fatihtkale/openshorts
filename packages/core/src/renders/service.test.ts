@@ -91,4 +91,23 @@ describe('RenderService', () => {
     renders.jobGaveUp(queue.get(job.id)!, 'cancelled')
     expect(renders.dto(r.id)).toMatchObject({ status: 'failed', error: 'Cancelled' })
   })
+
+  it('exports several clips at once, skipping unchanged and busy ones', () => {
+    const done = clips.createManual(projectId, { startMs: 0, endMs: 15_000, title: 'Done' })
+    const r = renders.request(done.id)
+    renders.complete(r.id, { storageKey: 'a.mp4', bytes: 1, durationMs: 15_000 })
+    const fresh = clips.createManual(projectId, { startMs: 20_000, endMs: 35_000, title: 'Fresh' })
+    const busy = clips.createManual(projectId, { startMs: 40_000, endMs: 55_000, title: 'Busy' })
+    renders.request(busy.id)
+    const { proposal } = proposals.proposeClips({ projectId, clips: [{ startMs: 5_000, endMs: 20_000, title: 'Pending' }] })
+
+    expect(renders.requestMany([done.id, fresh.id, busy.id, fresh.id, proposal.clips[0]!.id])).toEqual({
+      started: 1,
+      upToDate: 2,
+      failed: [{ clipId: proposal.clips[0]!.id, error: expect.stringMatching(/Approve/) }],
+    })
+    // Edited since its export: exported again.
+    clips.update(done.id, { title: 'Done 2' }, 1)
+    expect(renders.requestMany([done.id]).started).toBe(1)
+  })
 })

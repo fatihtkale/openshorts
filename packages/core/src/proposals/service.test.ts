@@ -79,7 +79,7 @@ describe('proposeClips', () => {
       note: 'Two strong moments',
       client: 'claude-code',
       clips: [
-        { startMs: 1200, endMs: 20_100, title: 'First', score: 120, keywords: [' a ', ''] },
+        { startMs: 1200, endMs: 20_100, title: 'First #NoPixel #GTARP', score: 120, keywords: [' a ', ''] },
         { startMs: 30_000, endMs: 31_000, title: 'Tiny' },
         { startMs: 40_000, endMs: 70_000, title: 'Runs past the end' },
       ],

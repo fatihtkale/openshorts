@@ -5,7 +5,7 @@ import type { Db } from '../db/client'
 import { clips, projects, renders, type JobRow, type RenderRow } from '../db/schema'
 import { ProjectError } from '../errors'
 import type { JobQueue } from '../jobs/queue'
-import type { RenderDto } from '../shared/clips'
+import { needsExport, type RenderDto } from '../shared/clips'
 
 /** Exports of clips as MP4 files. Each export is a `clip.render` job. */
 export class RenderService {
@@ -39,6 +39,33 @@ export class RenderService {
       this.queue.enqueue('clip.render', { renderId: id }, { projectId: clip.projectId })
     })
     return this.dto(id)
+  }
+
+  /**
+   * Exports several clips (from any projects) one after another. Clips already exported and unchanged, or exporting
+   * right now, are skipped; a clip that can't be exported (removed, video not ready) is reported, not fatal.
+   */
+  requestMany(clipIds: string[]): { started: number; upToDate: number; failed: { clipId: string; error: string }[] } {
+    let started = 0
+    let upToDate = 0
+    const failed: { clipId: string; error: string }[] = []
+    for (const clipId of [...new Set(clipIds)]) {
+      const clip = this.db.select().from(clips).where(eq(clips.id, clipId)).get()
+      const latest = clip && this.db.select().from(renders).where(eq(renders.clipId, clipId)).orderBy(desc(renders.createdAt)).get()
+      const busy = latest && (latest.status === 'queued' || latest.status === 'running') && latest.clipVersion === clip.version
+      if (clip && latest && (busy || !needsExport({ version: clip.version, render: toRenderDto(latest) }))) {
+        upToDate++
+        continue
+      }
+      try {
+        this.request(clipId)
+        started++
+      } catch (error) {
+        if (!(error instanceof ProjectError)) throw error
+        failed.push({ clipId, error: error.message })
+      }
+    }
+    return { started, upToDate, failed }
   }
 
   get(id: string): RenderRow | null {

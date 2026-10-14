@@ -18,6 +18,7 @@ let queue: JobQueue
 let posts: PostService
 let renderId: string
 let youtubeId: string
+let library: () => ReturnType<ClipService['library']>
 let tiktokId: string
 const HOUR = 3_600_000
 const tiktokOptions: TiktokPostOptions = {
@@ -39,6 +40,7 @@ beforeEach(async () => {
   queue = new JobQueue(db, () => clock)
   const projects = new ProjectService(db, queue, new LocalStorage(dir), () => clock)
   const clips = new ClipService(db, () => clock)
+  library = () => clips.library()
   const renders = new RenderService(db, queue, () => clock)
   posts = new PostService(db, queue, () => clock)
   const accounts = new AccountService(db, randomBytes(32), () => clock)
@@ -60,6 +62,18 @@ afterEach(async () => {
 })
 
 const postJob = (postId: string) => queue.listRecent(100).find((j) => j.type === 'post.publish' && (j.payload as { postId: string }).postId === postId)
+
+describe('the clips library', () => {
+  it('lists clips across projects with what has been uploaded and what still waits', () => {
+    expect(library()).toMatchObject([{ projectName: 'P', uploaded: 0, waiting: 0, clip: { title: 'Clip' } }])
+    const a = posts.create({ renderId, accountId: youtubeId, title: 'A', scheduledAt: clock.getTime() + 2 * HOUR, youtube: { privacy: 'public', tags: [], madeForKids: false } })
+    const b = posts.create({ renderId, accountId: youtubeId, title: 'B', youtube: { privacy: 'public', tags: [], madeForKids: false } })
+    expect(library()[0]).toMatchObject({ uploaded: 0, waiting: 2 })
+    posts.setStatus(a.id, 'scheduled', { remoteId: 'v1' })
+    posts.setStatus(b.id, 'failed', { error: 'x' })
+    expect(library()[0]).toMatchObject({ uploaded: 1, waiting: 0 })
+  })
+})
 
 describe('scheduled posts', () => {
   it('uploads YouTube now (it publishes at the time) and runs TikTok at its time', () => {

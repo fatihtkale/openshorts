@@ -2,6 +2,8 @@
 import { formatTimecode } from '@clipstudio/core/shared'
 
 const route = useRoute()
+/** Opened from the Clips page: the back button returns there instead of to the project. */
+const fromClips = computed(() => route.query.from === 'clips')
 const editor = useClipEditor(() => String(route.params.id))
 const { data, draft, saveState, error } = editor
 
@@ -76,8 +78,8 @@ const tabs = [
             icon="i-lucide-arrow-left"
             color="neutral"
             variant="ghost"
-            :to="`/projects/${data.project.id}`"
-            :aria-label="`Back to ${data.project.name}`"
+            :to="fromClips ? '/clips' : `/projects/${data.project.id}`"
+            :aria-label="fromClips ? 'Back to Clips' : `Back to ${data.project.name}`"
           />
           <input
             v-if="draft"
