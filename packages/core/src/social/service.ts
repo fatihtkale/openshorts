@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, gte, inArray, isNull, lt, or } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNull, lt, max, or } from 'drizzle-orm'
 import { seal, unseal } from '../crypto'
 import type { Db } from '../db/client'
 import { accounts, clips, posts, postStats, projects, renders, scheduleBatches, type AccountRow, type JobRow, type PostRow } from '../db/schema'
@@ -479,6 +479,43 @@ export class PostService {
     })
   }
 
+  /**
+   * "Check views now" on the Insights page: queues a view-count check, running straight away, for every live post with
+   * a video id. Skips posts checked in the last 10 minutes or with a check already due. The planned 48 h / 7 d checks
+   * stay; Insights uses the reading closest to two days, so extra readings don't skew it.
+   */
+  requestStatsNow(): { queued: number; recent: number } {
+    const now = this.now().getTime()
+    const live = this.db
+      .select()
+      .from(posts)
+      .where(inArray(posts.status, ['published', 'scheduled']))
+      .all()
+      .filter((p) => p.remoteId && (this.liveAt(p) ?? Infinity) <= now)
+    const lastReading = new Map(
+      this.db
+        .select({ postId: postStats.postId, at: max(postStats.capturedAt) })
+        .from(postStats)
+        .groupBy(postStats.postId)
+        .all()
+        .map((r) => [r.postId, r.at ? new Date(r.at).getTime() : 0]),
+    )
+    let queued = 0
+    let recent = 0
+    for (const post of live) {
+      const due = this.queue
+        .activeForProject(post.projectId)
+        .some((j) => j.type === 'post.stats' && (j.payload as { postId?: string }).postId === post.id && j.runAt.getTime() <= now)
+      if (due || now - (lastReading.get(post.id) ?? 0) < 10 * 60_000) {
+        recent++
+        continue
+      }
+      this.queue.enqueue('post.stats', { postId: post.id }, { projectId: post.projectId })
+      queued++
+    }
+    return { queued, recent }
+  }
+
   /** Every live post with its view-count readings, for the Insights page. */
   insights(): InsightPost[] {
     const rows = this.db
@@ -506,7 +543,7 @@ export class PostService {
         platform: r.post.platform,
         accountId: r.post.accountId ?? 'gone',
         accountName: r.accountName,
-        title: r.clipTitle,
+        title: r.post.title || r.clipTitle,
         url: r.post.url,
         liveAt: r.live,
         readings: (byPost.get(r.post.id) ?? []).map((s) => ({ ageHours: s.ageHours, views: s.views, likes: s.likes, comments: s.comments, shares: s.shares })),

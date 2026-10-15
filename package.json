@@ -17,6 +17,7 @@
     "checkup": "pnpm --filter @clipstudio/worker exec tsx src/cli/checkup.ts",
     "backup": "pnpm --filter @clipstudio/worker exec tsx src/cli/backup.ts",
     "restore": "pnpm --filter @clipstudio/worker exec tsx src/cli/restore.ts",
+    "retime": "pnpm --filter @clipstudio/worker exec tsx src/cli/retime.ts",
     "test:e2e": "pnpm build && playwright test -c e2e",
     "fix:sqlite": "node scripts/fix-sqlite.mjs"
   },

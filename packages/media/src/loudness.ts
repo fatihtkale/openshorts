@@ -6,8 +6,29 @@ import { open } from 'node:fs/promises'
  * Reads the file as a stream, so an 8-hour VOD (≈ 900 MB of audio) uses almost no memory.
  */
 export async function loudnessCurve(wavPath: string, opts: { signal?: AbortSignal; onProgress?: (f: number) => void } = {}): Promise<number[]> {
+  return meanSquares(wavPath, (rate) => rate, opts)
+}
+
+/**
+ * Loudness in short frames (default 20 ms), fine enough to see where words start and stop.
+ * Stored as Float32 (an 8-hour VOD is about 1.4 M frames, under 6 MB).
+ */
+export async function loudnessEnvelope(
+  wavPath: string,
+  opts: { frameMs?: number; signal?: AbortSignal; onProgress?: (f: number) => void } = {},
+): Promise<Float32Array> {
+  const frameMs = opts.frameMs ?? 20
+  return Float32Array.from(await meanSquares(wavPath, (rate) => Math.round((rate * frameMs) / 1000), opts))
+}
+
+/** Streams the samples and returns the loudness (dBFS) of each frame; a final partial frame counts if over a quarter. */
+async function meanSquares(
+  wavPath: string,
+  frameSize: (sampleRate: number) => number,
+  opts: { signal?: AbortSignal; onProgress?: (f: number) => void },
+): Promise<number[]> {
   const { dataOffset, dataBytes, sampleRate } = await readWavHeader(wavPath)
-  const perSecond = sampleRate
+  const perFrame = frameSize(sampleRate)
   const out: number[] = []
   let sum = 0
   let count = 0
@@ -25,7 +46,7 @@ export async function loudnessCurve(wavPath: string, opts: { signal?: AbortSigna
     for (let i = 0; i < usable; i += 2) {
       const v = buf.readInt16LE(i)
       sum += v * v
-      if (++count === perSecond) {
+      if (++count === perFrame) {
         out.push(toDb(sum / count))
         sum = 0
         count = 0
@@ -34,7 +55,7 @@ export async function loudnessCurve(wavPath: string, opts: { signal?: AbortSigna
     read += chunk.length
     opts.onProgress?.(Math.min(1, read / dataBytes))
   }
-  if (count > perSecond / 4) out.push(toDb(sum / count))
+  if (count > perFrame / 4) out.push(toDb(sum / count))
   return out
 }
 

@@ -27,6 +27,11 @@ export class TranscriptService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
+  /** Projects with a finished transcript. */
+  readyProjectIds(): string[] {
+    return this.db.select({ id: transcripts.projectId }).from(transcripts).where(eq(transcripts.status, 'ready')).all().map((r) => r.id)
+  }
+
   get(projectId: string): TranscriptRow | null {
     return this.db.select().from(transcripts).where(eq(transcripts.projectId, projectId)).get() ?? null
   }
@@ -79,6 +84,18 @@ export class TranscriptService {
       })
       .where(eq(transcripts.projectId, projectId))
       .run()
+  }
+
+  /**
+   * New timings for the same words (from lining them up with the audio). Text, fixes and the edited flag stay;
+   * only start and end change.
+   */
+  retime(projectId: string, timed: Pick<Word, 'start' | 'end'>[]): void {
+    const row = this.get(projectId)
+    if (!row || row.status !== 'ready') throw new ProjectError('This project has no finished transcript', 'conflict')
+    if (timed.length !== row.words.length) throw new ProjectError('The transcript changed meanwhile; line it up again', 'conflict')
+    const words = row.words.map((w, i) => ({ ...w, start: timed[i]!.start, end: timed[i]!.end }))
+    this.db.update(transcripts).set({ words, updatedAt: this.now() }).where(eq(transcripts.projectId, projectId)).run()
   }
 
   fail(projectId: string, error: string): void {

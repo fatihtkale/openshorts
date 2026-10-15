@@ -140,8 +140,10 @@ export function parseTwitchUrl(input: string): { kind: 'vod' | 'clip'; id: strin
     const slug = parts[0] === 'embed' ? parsed.searchParams.get('clip') : parts[0]
     return slug && CLIP_SLUG.test(slug) ? { kind: 'clip', id: slug, url: `https://clips.twitch.tv/${slug}` } : null
   }
-  if (parts[0] === 'videos' && /^\d+$/.test(parts[1] ?? '')) {
-    return { kind: 'vod', id: `v${parts[1]}`, url: `https://www.twitch.tv/videos/${parts[1]}` }
+  // twitch.tv/videos/<id>, and the channel forms twitch.tv/<channel>/video/<id> and /<channel>/v/<id>.
+  const vodId = parts[0] === 'videos' ? parts[1] : parts[1] === 'video' || parts[1] === 'v' ? parts[2] : undefined
+  if (vodId && /^\d+$/.test(vodId)) {
+    return { kind: 'vod', id: `v${vodId}`, url: `https://www.twitch.tv/videos/${vodId}` }
   }
   if (parts[1] === 'clip' && parts[2] && CLIP_SLUG.test(parts[2])) {
     return { kind: 'clip', id: parts[2], url: `https://clips.twitch.tv/${parts[2]}` }

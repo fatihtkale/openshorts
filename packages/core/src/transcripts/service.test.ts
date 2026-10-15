@@ -79,6 +79,27 @@ describe('TranscriptService', () => {
     expect(() => transcripts.edit(id, [{ index: 0, text: '  ' }], after.updatedAt)).toThrow(/cannot be empty/)
   })
 
+  it('takes new timings for the same words, keeping text fixes', () => {
+    const id = readyProject()
+    expect(transcripts.readyProjectIds()).toEqual([])
+    transcripts.request(id)
+    transcripts.complete(id, { engine: 'whisper.cpp', model: 'base', language: 'en', words })
+    const fixed = transcripts.edit(id, [{ index: 1, text: 'world.' }], transcripts.dto(id).updatedAt)
+    expect(transcripts.readyProjectIds()).toEqual([id])
+
+    transcripts.retime(id, [
+      { start: 100, end: 350 },
+      { start: 500, end: 690 },
+    ])
+    const after = transcripts.dto(id)
+    expect(after.words).toEqual([
+      { text: 'Hello', start: 100, end: 350, p: 0.95 },
+      { text: 'world.', start: 500, end: 690, p: 1 },
+    ])
+    expect(after.edited).toBe(fixed.edited)
+    expect(() => transcripts.retime(id, [{ start: 0, end: 1 }])).toThrow(/changed meanwhile/)
+  })
+
   it('keeps the old words when a new transcription fails', () => {
     const id = readyProject()
     transcripts.request(id)

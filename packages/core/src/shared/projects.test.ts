@@ -91,6 +91,10 @@ describe('Twitch links', () => {
     expect(parseTwitchUrl('https://clips.twitch.tv/BraveTastyOtter-AbC_12xyz')?.id).toBe('BraveTastyOtter-AbC_12xyz')
     expect(parseTwitchUrl('https://clips.twitch.tv/embed?clip=BraveTastyOtter&parent=x')?.id).toBe('BraveTastyOtter')
     expect(parseTwitchUrl('https://m.twitch.tv/videos/123')?.kind).toBe('vod')
+    // The channel forms Twitch also shares.
+    expect(parseTwitchUrl('https://www.twitch.tv/buddha/video/2899817829')).toEqual({ kind: 'vod', id: 'v2899817829', url: 'https://www.twitch.tv/videos/2899817829' })
+    expect(parseTwitchUrl('twitch.tv/buddha/v/2899817829?t=10m')?.id).toBe('v2899817829')
+    expect(parseTwitchUrl('https://www.twitch.tv/buddha/video/abc')).toBeNull()
   })
 
   it('rejects channel pages and other sites', () => {

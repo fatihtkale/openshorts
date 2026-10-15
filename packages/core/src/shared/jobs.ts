@@ -52,6 +52,12 @@ export const jobDefinitions = {
     maxAttempts: 2,
     payload: z.object({ projectId: z.string(), language: z.string().default('auto') }),
   },
+  'transcript.retime': {
+    label: 'Line up words with the audio',
+    group: 'default',
+    maxAttempts: 2,
+    payload: z.object({ projectId: z.string() }),
+  },
   'clip.render': {
     label: 'Export clip',
     group: 'render',

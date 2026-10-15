@@ -25,7 +25,7 @@ import { createPrepareHandler } from './prepare'
 import { createPublishHandler } from './publish'
 import { createRenderHandler } from './render'
 import { createStatsHandler } from './stats'
-import { createTranscribeHandler } from './transcribe'
+import { createRetimeHandler, createTranscribeHandler } from './transcribe'
 
 export interface JobContext {
   jobId: string
@@ -73,6 +73,7 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
     'media.prepare': createPrepareHandler(deps),
     'media.faces': createFacesHandler(deps),
     transcribe: createTranscribeHandler(deps),
+    'transcript.retime': createRetimeHandler(deps),
     'models.download': createModelDownloadHandler(deps),
     'clip.render': createRenderHandler(deps),
     'post.publish': createPublishHandler(deps),

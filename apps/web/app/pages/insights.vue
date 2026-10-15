@@ -19,6 +19,32 @@ onJobStatusChange((job) => {
   if (job.type === 'post.stats' || job.type === 'post.publish') void refresh()
 })
 
+// ── Check views now (instead of waiting for the 2- and 7-day checks) ─
+const { jobs } = useJobs()
+const now = useNow(5_000)
+/** View checks running now, or due now (queued but not waiting for a later time). */
+const checking = computed(() => jobs.value.filter((j) => j.type === 'post.stats' && (j.status === 'running' || (j.status === 'queued' && j.runAt <= now.value))).length)
+const requesting = ref(false)
+async function checkNow() {
+  requesting.value = true
+  try {
+    const { queued, recent } = await $fetch<{ queued: number; recent: number }>('/api/insights/refresh', { method: 'POST' })
+    toast.add({
+      title: queued ? `Checking views on ${queued} ${queued === 1 ? 'post' : 'posts'}` : 'Nothing to check right now',
+      description: queued
+        ? 'The numbers update here as they come in.'
+        : recent
+          ? 'Every live post was checked in the last 10 minutes.'
+          : 'No post is live yet; scheduled videos are checked once they go public.',
+      icon: 'i-lucide-refresh-cw',
+    })
+  } catch (e) {
+    toast.add({ title: 'Could not check views', description: (e as { statusMessage?: string }).statusMessage ?? (e as Error).message, color: 'error' })
+  } finally {
+    requesting.value = false
+  }
+}
+
 // One filter row scopes every number on the page.
 const platform = ref<'all' | 'youtube' | 'tiktok'>('all')
 // Only platforms that have posts get a tab; with one platform there's nothing to filter.
@@ -79,10 +105,20 @@ const when = (ms: number) => new Date(ms).toLocaleString([], { day: 'numeric', m
 
 <template>
   <PageShell title="Insights">
+    <template #actions>
+      <UButton
+        :label="checking ? `Checking ${checking}…` : 'Check views now'"
+        icon="i-lucide-refresh-cw"
+        color="neutral"
+        variant="outline"
+        :loading="requesting || checking > 0"
+        @click="checkNow"
+      />
+    </template>
     <div class="mx-auto w-full max-w-5xl space-y-6">
       <div class="flex flex-wrap items-center gap-3">
         <UTabs v-if="platformItems.length > 2" v-model="platform" :items="platformItems" :content="false" size="sm" class="w-auto" />
-        <p class="text-xs text-muted">Views are read 2 days and 7 days after a post goes live.</p>
+        <p class="text-xs text-muted">Views are read 2 days and 7 days after a post goes live, or whenever you press <strong>Check views now</strong>.</p>
       </div>
 
       <UCard v-if="!data.posts.length">

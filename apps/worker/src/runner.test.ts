@@ -29,6 +29,7 @@ function setup(handler: JobHandlers['demo.count'], concurrency = { default: 2 })
       'ingest.download': async () => {},
       'media.prepare': async () => {},
       transcribe: async () => {},
+      'transcript.retime': async () => {},
       'models.download': async () => {},
       'clip.render': async () => {},
       'media.faces': async () => {},

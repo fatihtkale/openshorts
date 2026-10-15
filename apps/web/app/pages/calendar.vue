@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PLATFORM_LABELS, POST_STATUS_LABELS, youtubeStudioUrl, type CalendarPost } from '@clipstudio/core/shared'
+import { formatInZone, PLATFORM_LABELS, POST_STATUS_LABELS, youtubeStudioUrl, zonedDate, zoneLabel, type CalendarPost, type ScheduleDefaults } from '@clipstudio/core/shared'
 
 const route = useRoute()
 const toast = useToast()
@@ -17,16 +17,45 @@ const end = computed(() => {
   e.setDate(e.getDate() + 7)
   return e
 })
+/** "YYYY-MM-DD" of a calendar date (its own Y/M/D, whatever the zone). */
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const days = computed(() =>
   Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start.value)
     d.setDate(d.getDate() + i)
-    return d
+    return ymd(d)
   }),
 )
+const dayLabel = (day: string, opts: Intl.DateTimeFormatOptions) => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, opts)
 
+// Which clock the week is shown in: the audience's (posts are planned in it) or this Mac's.
+const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+const { data: defaults } = await useFetch<ScheduleDefaults>('/api/settings/schedule', { server: false })
+const audienceZone = computed(() => defaults.value?.timeZone ?? 'America/New_York')
+const ZONE_KEY = 'calendar.zone'
+const showLocal = ref(false)
+onMounted(() => {
+  try {
+    showLocal.value = localStorage.getItem(ZONE_KEY) === 'local'
+  } catch {
+    // No storage: audience time.
+  }
+})
+watch(showLocal, (v) => {
+  try {
+    localStorage.setItem(ZONE_KEY, v ? 'local' : 'audience')
+  } catch {
+    // Not remembered; fine.
+  }
+})
+const viewZone = computed(() => (showLocal.value ? localZone : audienceZone.value))
+const otherZone = computed(() => (showLocal.value ? audienceZone.value : localZone))
+const sameZone = computed(() => localZone === audienceZone.value)
+const cityName = (zone: string) => zone.split('/').pop()!.replace(/_/g, ' ')
+
+// A day either side, so posts near midnight in the other zone are there too.
 const { data: posts, refresh } = await useFetch<CalendarPost[]>('/api/posts', {
-  query: computed(() => ({ from: start.value.getTime(), to: end.value.getTime() })),
+  query: computed(() => ({ from: start.value.getTime() - 86_400_000, to: end.value.getTime() + 86_400_000 })),
   default: () => [],
 })
 onJobStatusChange((job) => {
@@ -34,13 +63,16 @@ onJobStatusChange((job) => {
 })
 
 const when = (p: CalendarPost) => p.scheduledAt ?? p.publishedAt ?? p.createdAt
-function postsOn(day: Date) {
-  const next = new Date(day)
-  next.setDate(next.getDate() + 1)
-  return posts.value.filter((p) => when(p) >= day.getTime() && when(p) < next.getTime()).sort((a, b) => when(a) - when(b))
+function postsOn(day: string) {
+  return posts.value.filter((p) => zonedDate(when(p), viewZone.value) === day).sort((a, b) => when(a) - when(b))
 }
-const isToday = (d: Date) => d.toDateString() === new Date(now.value).toDateString()
-const time = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+const isToday = (day: string) => day === zonedDate(now.value, viewZone.value)
+const time = (ms: number, zone = viewZone.value) => formatInZone(ms, zone)
+/** The other clock, with "+1"/"−1" when it falls on another day. */
+function otherTime(ms: number): string {
+  const shift = Math.round((Date.parse(zonedDate(ms, otherZone.value)) - Date.parse(zonedDate(ms, viewZone.value))) / 86_400_000)
+  return `${time(ms, otherZone.value)}${shift > 0 ? ' +1' : shift < 0 ? ' −1' : ''}`
+}
 
 function shift(weeks: number) {
   const s = new Date(start.value)
@@ -155,9 +187,19 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
         <UButton label="This week" color="neutral" variant="outline" size="sm" @click="start = weekStart(new Date())" />
         <h2 class="ml-2 font-semibold">
           {{ start.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) }} –
-          {{ days[6]!.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) }}
+          {{ dayLabel(days[6]!, { day: 'numeric', month: 'short', year: 'numeric' }) }}
         </h2>
-        <span class="ml-auto text-xs text-muted">Times in your time zone</span>
+        <div v-if="!sameZone" class="ml-auto flex items-center gap-2 text-xs">
+          <span class="text-muted">Times in</span>
+          <UButton
+            :label="`${cityName(audienceZone)} (audience)`"
+            size="xs"
+            :color="showLocal ? 'neutral' : 'primary'"
+            :variant="showLocal ? 'ghost' : 'soft'"
+            @click="showLocal = false"
+          />
+          <UButton :label="`${cityName(localZone)} (you)`" size="xs" :color="showLocal ? 'primary' : 'neutral'" :variant="showLocal ? 'soft' : 'ghost'" @click="showLocal = true" />
+        </div>
       </div>
 
       <UAlert
@@ -172,12 +214,12 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
       <div class="grid gap-3 md:grid-cols-7">
         <div
           v-for="day in days"
-          :key="day.toISOString()"
+          :key="day"
           class="min-h-40 rounded-lg border p-2"
           :class="isToday(day) ? 'border-primary bg-primary/5' : 'border-default'"
         >
           <p class="mb-2 text-xs font-medium" :class="isToday(day) ? 'text-primary' : 'text-muted'">
-            {{ day.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' }) }}
+            {{ dayLabel(day, { weekday: 'short', day: 'numeric' }) }}
           </p>
           <div class="space-y-1.5">
             <button
@@ -191,6 +233,7 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
               <div class="flex items-center gap-1.5">
                 <UIcon :name="p.platform === 'youtube' ? 'i-simple-icons-youtube' : 'i-simple-icons-tiktok'" class="size-3 shrink-0" />
                 <span class="font-semibold tabular-nums">{{ time(when(p)) }}</span>
+                <span v-if="!sameZone" class="text-dimmed tabular-nums" :title="`${cityName(otherZone)} time`">{{ otherTime(when(p)) }}</span>
                 <span
                   class="ml-auto size-2 shrink-0 rounded-full"
                   :class="{
@@ -201,7 +244,7 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
                   }"
                 />
               </div>
-              <p class="mt-0.5 line-clamp-2">{{ p.clipTitle }}</p>
+              <p class="mt-0.5 line-clamp-2">{{ p.title || p.clipTitle }}</p>
             </button>
             <p v-if="!postsOn(day).length" class="py-2 text-center text-xs text-dimmed">—</p>
           </div>
@@ -209,12 +252,16 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
       </div>
     </div>
 
-    <USlideover v-model:open="detailOpen" :title="selected?.clipTitle" :description="selected ? `${PLATFORM_LABELS[selected.platform]} · ${selected.accountName ?? 'disconnected account'}` : undefined">
+    <USlideover v-model:open="detailOpen" :title="selected ? selected.title || selected.clipTitle : undefined" :description="selected ? `${PLATFORM_LABELS[selected.platform]} · ${selected.accountName ?? 'disconnected account'}` : undefined">
       <template #body>
         <div v-if="selected" class="space-y-5 text-sm">
           <div class="flex items-center gap-2">
             <UBadge :label="POST_STATUS_LABELS[selected.status]" :color="tone(selected)" variant="subtle" />
-            <span class="text-muted">{{ new Date(when(selected)).toLocaleString([], { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) }}</span>
+            <span class="text-muted">
+              {{ formatInZone(when(selected), audienceZone, { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) }}
+              {{ zoneLabel(when(selected), audienceZone) }}
+              <template v-if="!sameZone">· {{ formatInZone(when(selected), localZone, { weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) }} your time</template>
+            </span>
           </div>
           <p v-if="selected.error" class="text-error">{{ selected.error }}</p>
           <template v-if="!editingText">
@@ -294,7 +341,7 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
               <p class="font-medium">Move the publish time</p>
               <p class="text-xs text-muted">The video is already on YouTube; the new time is changed there too.</p>
               <div class="flex flex-wrap items-end gap-2">
-                <UFormField label="New time">
+                <UFormField :label="sameZone ? 'New time' : `New time (${cityName(localZone)} time)`">
                   <UInput v-model="newTime" type="datetime-local" size="sm" />
                 </UFormField>
                 <UButton label="Move on YouTube" color="neutral" variant="outline" size="sm" :loading="busy === 'reschedule'" @click="act('reschedule')" />
@@ -315,7 +362,7 @@ async function act(kind: 'cancel' | 'now' | 'reschedule') {
                 @click="act('now')"
               />
               <div class="flex flex-wrap items-end gap-2">
-                <UFormField label="New time">
+                <UFormField :label="sameZone ? 'New time' : `New time (${cityName(localZone)} time)`">
                   <UInput v-model="newTime" type="datetime-local" size="sm" />
                 </UFormField>
                 <UButton label="Move" color="neutral" variant="outline" size="sm" :loading="busy === 'reschedule'" @click="act('reschedule')" />

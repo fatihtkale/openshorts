@@ -65,8 +65,8 @@ export function createPrepareHandler(deps: HandlerDeps): JobHandler<'media.prepa
       deps.queue.enqueue('media.highlights', { projectId }, { projectId })
     }
 
-    // Face analysis (for automatic framing) and transcription start on their own.
-    projects.requestFaces(projectId)
+    // Transcription starts on its own. Face analysis (automatic framing) doesn't: it's slow and most game footage has
+    // no faces, so it runs when asked (Find faces in the editor's Layout tab).
     if (info.hasAudio && models.active() && !transcripts.get(projectId)) transcripts.request(projectId, 'auto')
     return { encoder }
   }

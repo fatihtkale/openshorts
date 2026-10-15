@@ -63,6 +63,27 @@ afterEach(async () => {
 
 const postJob = (postId: string) => queue.listRecent(100).find((j) => j.type === 'post.publish' && (j.payload as { postId: string }).postId === postId)
 
+describe('checking views now', () => {
+  it('queues a check for live posts only, skipping ones checked in the last 10 minutes', () => {
+    const yt = { privacy: 'public' as const, tags: [], madeForKids: false }
+    const live = posts.create({ renderId, accountId: youtubeId, title: 'Live', youtube: yt })
+    posts.setStatus(live.id, 'published', { remoteId: 'v1', publishedAt: new Date(clock.getTime() - 5 * HOUR) })
+    const later = posts.create({ renderId, accountId: youtubeId, title: 'Later', scheduledAt: clock.getTime() + 5 * HOUR, youtube: yt })
+    posts.setStatus(later.id, 'scheduled', { remoteId: 'v2' })
+    const dueNow = () => queue.listRecent(100).filter((j) => j.type === 'post.stats' && j.status === 'queued' && j.runAt.getTime() <= clock.getTime())
+
+    expect(posts.requestStatsNow()).toEqual({ queued: 1, recent: 0 })
+    expect(dueNow().map((j) => (j.payload as { postId: string }).postId)).toEqual([live.id])
+    // Already due: not queued twice.
+    expect(posts.requestStatsNow()).toEqual({ queued: 0, recent: 1 })
+    for (const j of dueNow()) queue.requestCancel(j.id)
+    posts.recordStats(live.id, { views: 10, likes: null, comments: null, shares: null })
+    expect(posts.requestStatsNow()).toEqual({ queued: 0, recent: 1 })
+    clock = new Date(clock.getTime() + 11 * 60_000)
+    expect(posts.requestStatsNow()).toEqual({ queued: 1, recent: 0 })
+  })
+})
+
 describe('the clips library', () => {
   it('lists clips across projects with what has been uploaded and what still waits', () => {
     expect(library()).toMatchObject([{ projectName: 'P', uploaded: 0, waiting: 0, clip: { title: 'Clip' } }])

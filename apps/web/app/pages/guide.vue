@@ -109,6 +109,11 @@ const troubles = [
       'Use “Fix words” in the transcript’s ⋯ menu; captions use your fixes. If the language was detected wrong, choose “Transcribe again…” and pick the language. A closing “Thanks for watching” after other speech is a known Whisper gap; add it with Fix words if you need it.',
   },
   {
+    label: 'Captions show a word before it’s said',
+    content:
+      'After transcribing, Clip Studio lines every word up with the speech it hears in the audio (Whisper tends to start a word too early after a pause). Transcripts made before that step was added were lined up once; to redo one, choose “Transcribe again…”. Clips you exported earlier keep their old captions until you export them again. Where music or noise plays under the talking, the words stay as Whisper wrote them; drag the clip edges or fix them by hand.',
+  },
+  {
     label: 'The crop doesn’t follow the speaker',
     content:
       'In the editor’s Layout tab, Fill mode, turn on “Follow faces”. If faces haven’t been found for this video yet, click “Find faces” and wait a moment. It follows visible faces; for anything else, drag the box (turn on “Move over time” to pan).',
@@ -218,7 +223,7 @@ const glossary = [
           <ol>
             <GuideStep :n="1" title="Add a video" to="/" to-label="Projects">
               <p>
-                On <strong>Projects</strong>, paste one or more YouTube links, Twitch VODs (twitch.tv/videos/…) or Twitch clips and click
+                On <strong>Projects</strong>, paste one or more YouTube links, Twitch VODs (twitch.tv/videos/… or twitch.tv/channel/video/…) or Twitch clips and click
                 <strong>Check link</strong>. You see the title, length and
                 thumbnail first; pick the quality (1080p is recommended) and, if you only need a part, switch on <strong>Only part of the video</strong>
                 and set From and To. Nothing downloads until you confirm.
@@ -236,7 +241,7 @@ const glossary = [
             <GuideStep :n="2" title="Let it prepare">
               <p>
                 The project goes from <em>Importing</em> to <em>Processing</em> to <em>Ready</em>. The app makes a preview copy, then transcribes the
-                speech and looks for faces by itself. Follow it with <strong>Activity</strong> at the top right, where you can also stop a job.
+                speech by itself (faces are only looked for when you ask: <strong>Find faces</strong> in the editor's Layout tab). Follow it with <strong>Activity</strong> at the top right, where you can also stop a job.
                 Transcribing takes a few minutes per hour of video.
               </p>
             </GuideStep>
@@ -560,12 +565,17 @@ const glossary = [
             click a post to post it now, move it or cancel it. A video already waiting on YouTube can still move: <strong>Move on
             YouTube</strong> changes its publish time there too. Space posts 2–3 hours apart; the scheduler warns when they're closer.
           </p>
+          <p>
+            The Calendar shows the week in your <strong>audience’s time</strong> (New York by default), with your own time in grey next to each
+            post (“+1” when that’s already the next day for you). An evening post in the US lands after midnight in Europe; switch to
+            <strong>your time</strong> at the top right to see it that way. The time box for moving a post is in your time.
+          </p>
         </GuideSection>
 
         <!-- 10. Insights -->
         <GuideSection id="insights" title="Insights" icon="i-lucide-chart-column" lead="Learn which posting hours work for your channel, from your own numbers.">
           <ul class="list-disc space-y-2 pl-5">
-            <li>The app reads each post’s views 2 days and 7 days after it goes live (the Mac needs to be on now and then).</li>
+            <li>The app reads each post’s views 2 days and 7 days after it goes live (the Mac needs to be on now and then). <strong>Check views now</strong> reads every live post straight away; extra checks don’t change the two-day numbers.</li>
             <li>The chart shows, per hour of posting, how a post did compared with what’s usual for your channel: 100% is a normal post.</li>
             <li>
               After 10 posts with a 2-day count, it suggests a better posting window if one clearly beats yours. <strong>Use</strong> it with a

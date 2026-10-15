@@ -41,6 +41,7 @@ Claude can read everything and propose clips or imports; you approve them in the
 | `pnpm backup [--media] [--to <folder>]` | Snapshot of the database and secret key into `data/backups` (or a folder); `--media` also copies videos |
 | `pnpm fix:sqlite` | After switching Node versions: fetches the database module built for the new one |
 | `pnpm restore [snapshot]` | With the app stopped: lists snapshots, or restores one after asking (saves the current state first) |
+| `pnpm retime [projectId …]` | Lines up transcript words with the audio again (all finished transcripts, or the ones named); the worker does it |
 | `pnpm test:e2e` | Builds, then runs browser tests in your Chrome against a separate copy on :3100 with empty data |
 
 ## Backups

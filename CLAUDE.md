@@ -58,6 +58,12 @@ Transcripts live in the `transcripts` table (one per project, words as JSON with
 `media.prepare` queues `transcribe` automatically when a model is installed. Whisper models live in `data/models/`
 (`ModelService` decides which one is active); `downloadFile` verifies Hugging Face's SHA-256 and resumes `.partial` files.
 whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention on, so don't add `-dtw`.
+Whisper glues each word's start to the previous word's end, so words after a pause start early (captions showed them
+before they were said). `transcribe` therefore runs `alignToAudio` (packages/media `align.ts`): a 20 ms
+`loudnessEnvelope`, `speechMap` (quiet / speech / unclear per frame, judged against the local quiet floor), then
+`alignWords` trims quiet off word edges and moves words stamped in the quiet into the next speech (or a sentence tail
+back into its own). Unclear audio (music bed, no quiet floor) is left alone. `transcript.retime` / `pnpm retime` redo
+existing transcripts (`TranscriptService.retime` keeps text fixes). Exports made before keep their old captions.
 
 ## Editor and export
 
@@ -70,7 +76,7 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
   Node draws caption frames with `@napi-rs/canvas` and pipes them in as raw RGBA. ~3× real time on the M1 Pro.
 - Fonts come from Fontsource (woff2): the browser imports their CSS, the exporter registers the same files.
 - `pnpm --filter @clipstudio/worker caption-sheet` draws every preset to `data/dev/caption-sheet.png` for a quick look.
-- Follow faces: `media.faces` (queued after `media.prepare`) samples the preview at 5/s, runs UltraFace RFB-320
+- Follow faces: `media.faces` (on request only: "Find faces" in the Layout tab; not queued on import) samples the preview at 5/s, runs UltraFace RFB-320
   (onnxruntime-node, model fetched once into `data/models/` and checked by SHA-256) and stores `faces.json`
   (boxes per sample + scene cuts). `resolveLayout`/`autoFrame` turn it into a smoothed crop path; new clips default
   to `layout.auto = true`. `pnpm --filter @clipstudio/worker exec tsx src/dev/faces.ts <projectId> <ms> <w> <h> --sheet`
@@ -123,6 +129,9 @@ whisper-cli runs with `-ml 1 -sow` (one segment per word); keep flash attention 
 
 ## Claude / MCP
 
+- **Finding, cutting or judging clips? Read [docs/claude-clipping-guide.md](docs/claude-clipping-guide.md) first**: the batch
+  workflow (read every transcript, check frames, sweep talk-only footage), the quality bar, what to reject, and what
+  worked on this channel. Claude Desktop users add it to a Project's knowledge.
 - `packages/mcp` builds the server (tools + `SERVER_INSTRUCTIONS`, the clip-finding guide every client receives);
   `apps/web/server/routes/mcp.ts` serves it stateless at `/mcp` (one server per request, JSON responses).
 - Tools either read or create a proposal (`ProposalService`). There is no approve tool: decisions only happen in the Inbox UI.
