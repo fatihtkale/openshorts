@@ -63,7 +63,7 @@ const layouts = [
   { name: 'Fill', icon: 'i-lucide-crop', text: 'Crops the video to vertical. “Follow faces” keeps the speaker in frame and cuts with the shots; or drag the box yourself, even moving it over time.' },
   { name: 'Fit', icon: 'i-lucide-rectangle-horizontal', text: 'Shows the whole frame on a blurred copy of itself. Good for wide shots and screenshots.' },
   { name: 'Split', icon: 'i-lucide-rows-2', text: 'Two parts of the frame stacked: two people in a podcast, or a person and what they point at.' },
-  { name: 'Screen', icon: 'i-lucide-monitor-smartphone', text: 'For screen recordings: the screen at full width, your face filling the rest. “Find my face” places the face box; “Face on top” swaps them.' },
+  { name: 'Screen', icon: 'i-lucide-monitor-smartphone', text: 'For screen recordings and reactions: the screen at full width, your face filling the rest. “Find my face” places the face box; “Face on top” swaps them. The Screen/Face slider sets how much of the height each part gets (Reset goes back to the screen’s own shape); the zoom sliders set how much each part is zoomed in.' },
 ]
 
 const shortcuts = [

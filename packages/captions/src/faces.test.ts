@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { autoFrame, facecamWindow, faceCoverage, resolveLayout, type FaceBox, type FaceTrack } from './faces'
-import { centreAt, screenPanels, windowRect } from './layout'
+import { centreAt, screenPanels, screenShare, windowRect } from './layout'
 import { defaultEdit } from './presets'
 
 const face = (cx: number, size = 0.1, score = 0.95): FaceBox => ({ x: cx - size / 2, y: 0.3, w: size, h: size * 1.6, score })
@@ -86,6 +86,21 @@ describe('screen layout', () => {
     // A 4:3 screen is capped so the face keeps at least 40% of the height.
     expect(screenPanels(layout, 1440, 1080).screen.out.h).toBe(810)
     expect(screenPanels(layout, 1080, 1920).screen.out.h).toBe(1152)
+  })
+
+  it('lets the screen take a chosen share of the height', () => {
+    const base = { ...defaultEdit().layout, mode: 'screen' as const }
+    const pick = (share: number) => ({ ...base, screen: { screen: { x: 0.5, y: 0.5, zoom: 1 }, face: { x: 0.5, y: 0.5, zoom: 1 }, faceOnTop: false, screenShare: share } })
+    expect(screenShare(base, 1920, 1080)).toBeCloseTo(608 / 1920, 2)
+    const half = screenPanels(pick(0.5), 1920, 1080)
+    expect(half.screen.out.h).toBe(960)
+    expect(half.face.out).toEqual({ x: 0, y: 960, w: 1080, h: 960 })
+    // Taller than 16:9 at full width: the screen part crops the source's sides instead of stretching.
+    expect(half.screen.src.h).toBeCloseTo(1080, -1)
+    expect(half.screen.src.w / half.screen.src.h).toBeCloseTo(1080 / 960, 2)
+    // Out-of-range values are held to the limits.
+    expect(screenPanels(pick(0.05), 1920, 1080).screen.out.h).toBe(384)
+    expect(screenPanels(pick(0.95), 1920, 1080).screen.out.h).toBe(1536)
   })
 
   it('finds the facecam in a corner and zooms in on it', () => {

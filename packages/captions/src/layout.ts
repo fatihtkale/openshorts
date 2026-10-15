@@ -79,14 +79,27 @@ export const DEFAULT_SCREEN: ScreenLayout = {
   faceOnTop: false,
 }
 
-/** The screen part never takes less than a quarter or more than 60% of the height, so the face always has room. */
+/** Without a chosen size the screen keeps its own shape, but never under a quarter or over 60% of the height. */
 const SCREEN_MIN_H = 480
 const SCREEN_MAX_H = 1152
+/** The range a chosen screen size may take (share of the frame height). */
+export const SCREEN_SHARE_MIN = 0.2
+export const SCREEN_SHARE_MAX = 0.8
 
-/** Screen mode: where each part comes from in the source and where it lands in the 1080×1920 output. */
+/** Share of the frame height the screen takes: the chosen size, or the source's own shape at full width. */
+export function screenShare(layout: ClipLayout, srcW: number, srcH: number): number {
+  const chosen = layout.screen?.screenShare
+  if (chosen !== undefined) return clamp(chosen, SCREEN_SHARE_MIN, SCREEN_SHARE_MAX)
+  return clamp((OUT_W * srcH) / srcW, SCREEN_MIN_H, SCREEN_MAX_H) / OUT_H
+}
+
+/**
+ * Screen mode: where each part comes from in the source and where it lands in the 1080×1920 output. A screen part
+ * taller than the source's shape crops its sides (zoom crops further).
+ */
 export function screenPanels(layout: ClipLayout, srcW: number, srcH: number): { screen: { src: Rect; out: Rect }; face: { src: Rect; out: Rect } } {
   const s = layout.screen ?? DEFAULT_SCREEN
-  const screenH = Math.round(clamp((OUT_W * srcH) / srcW, SCREEN_MIN_H, SCREEN_MAX_H) / 2) * 2
+  const screenH = Math.round((screenShare(layout, srcW, srcH) * OUT_H) / 2) * 2
   const faceH = OUT_H - screenH
   return {
     screen: {

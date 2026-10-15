@@ -1,5 +1,5 @@
 // Safe to import from the browser: no Node or database dependencies.
-import { CAPTION_ANIMATIONS, HOOK_STYLES, LAYOUT_MODES, type ClipEdit } from '@clipstudio/captions'
+import { CAPTION_ANIMATIONS, HOOK_STYLES, LAYOUT_MODES, SCREEN_SHARE_MAX, SCREEN_SHARE_MIN, type ClipEdit } from '@clipstudio/captions'
 import { z } from 'zod'
 import type { DownloadQuality, TimeRange, YoutubeMeta } from './projects'
 import type { ClipEvaluation } from './evaluation'
@@ -95,6 +95,7 @@ export const clipEditSchema = z.object({
         screen: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(4) }),
         face: z.object({ x: unit, y: unit, zoom: z.number().min(1).max(8) }),
         faceOnTop: z.boolean(),
+        screenShare: z.number().min(SCREEN_SHARE_MIN).max(SCREEN_SHARE_MAX).optional(),
       })
       .optional(),
   }),

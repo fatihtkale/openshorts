@@ -9,6 +9,9 @@ export {
   outputToSource,
   panelRect,
   screenPanels,
+  screenShare,
+  SCREEN_SHARE_MAX,
+  SCREEN_SHARE_MIN,
   type LayoutMode,
   type Rect,
 } from '@clipstudio/captions'

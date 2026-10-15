@@ -7,6 +7,9 @@ import {
   MAX_FACECAM_ZOOM,
   OUT_W,
   screenPanels,
+  screenShare,
+  SCREEN_SHARE_MAX,
+  SCREEN_SHARE_MIN,
   formatTimecodeMs,
   outputToSource,
   panelRect,
@@ -245,6 +248,24 @@ function screenZoom(key: 'screen' | 'face') {
       }, `screen-zoom-${key}`),
   })
 }
+/** How much of the frame height the screen takes, in %; the face gets the rest. */
+const screenSize = computed({
+  get: () => {
+    const { vw, vh } = size()
+    return Math.round(screenShare(layout.value, vw, vh) * 100)
+  },
+  set: (pct: number) =>
+    props.editor.update((d) => {
+      d.edit.layout.screen ??= structuredClone(DEFAULT_SCREEN)
+      d.edit.layout.screen.screenShare = pct / 100
+    }, 'screen-share'),
+})
+const sizeChosen = computed(() => layout.value.screen?.screenShare !== undefined)
+function resetScreenSize() {
+  props.editor.update((d) => {
+    if (d.edit.layout.screen) delete d.edit.layout.screen.screenShare
+  })
+}
 const screenAreaZoom = screenZoom('screen')
 const faceZoom = screenZoom('face')
 const faceOnTop = computed({
@@ -389,10 +410,19 @@ const modes = [
         <UButton v-else-if="!analysing" label="Find faces" icon="i-lucide-scan-face" color="neutral" variant="outline" size="sm" class="ml-auto" @click="analyse" />
         <span v-else class="ml-auto text-xs text-muted">Looking for faces… {{ Math.round(analysing.progress * 100) }}%</span>
       </div>
-      <UFormField :label="`Screen zoom · ${screenAreaZoom.toFixed(1)}×`" description="Zoom in to cut off toolbars or your camera's corner.">
+      <UFormField
+        :label="`Screen ${screenSize}% · Face ${100 - screenSize}%`"
+        :description="sizeChosen ? 'How much of the video height each part gets. A taller screen crops its sides.' : 'How much of the video height each part gets. Now: the screen at its own shape.'"
+      >
+        <template #hint>
+          <UButton v-if="sizeChosen" label="Reset" color="neutral" variant="link" size="xs" @click="resetScreenSize" />
+        </template>
+        <USlider v-model="screenSize" :min="Math.round(SCREEN_SHARE_MIN * 100)" :max="Math.round(SCREEN_SHARE_MAX * 100)" :step="1" />
+      </UFormField>
+      <UFormField :label="`Screen zoom · ${Math.round(screenAreaZoom * 100)}%`" description="Zoom in to cut off toolbars or your camera's corner.">
         <USlider v-model="screenAreaZoom" :min="1" :max="3" :step="0.05" />
       </UFormField>
-      <UFormField :label="`Face zoom · ${faceZoom.toFixed(1)}×`">
+      <UFormField :label="`Face zoom · ${Math.round(faceZoom * 100)}%`" description="How much the face fills its part.">
         <USlider v-model="faceZoom" :min="1" :max="MAX_FACECAM_ZOOM" :step="0.05" />
       </UFormField>
     </template>

@@ -92,6 +92,11 @@ export interface ScreenLayout {
   face: PanelWindow
   /** Face above the screen instead of below it. */
   faceOnTop: boolean
+  /**
+   * Share of the frame height the screen takes (SCREEN_SHARE_MIN–MAX), the face gets the rest. Missing: the screen keeps
+   * the source's shape at full width.
+   */
+  screenShare?: number
 }
 
 export interface ClipLayout {
