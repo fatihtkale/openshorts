@@ -309,8 +309,8 @@ export class JobQueue {
 }
 
 function subjectOf(payload: unknown): string | null {
-  const p = payload as { renderId?: unknown; modelId?: unknown } | null
-  const id = p?.renderId ?? p?.modelId
+  const p = payload as { renderId?: unknown; modelId?: unknown; compilationId?: unknown } | null
+  const id = p?.renderId ?? p?.modelId ?? p?.compilationId
   return typeof id === 'string' ? id : null
 }
 

@@ -1,6 +1,7 @@
 import {
   AccountService,
   ClipService,
+  CompilationService,
   createDb,
   getConfig,
   JobQueue,
@@ -27,6 +28,7 @@ interface Core {
   clips: ClipService
   proposals: ProposalService
   renders: RenderService
+  compilations: CompilationService
   accounts: AccountService
   posts: PostService
   /** Seals stored secrets (account tokens, the Anthropic key). */
@@ -56,6 +58,7 @@ export function useCore(): Core {
       clips,
       proposals: new ProposalService(db, clips, projects),
       renders: new RenderService(db, queue),
+      compilations: new CompilationService(db, queue),
       accounts: new AccountService(db, secretKey),
       posts: new PostService(db, queue),
       secretKey,

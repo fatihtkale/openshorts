@@ -10,6 +10,7 @@ const items = computed<NavigationMenuItem[][]>(() => [
   [
     { label: 'Projects', icon: 'i-lucide-folder-open', to: '/' },
     { label: 'Clips', icon: 'i-lucide-clapperboard', to: '/clips' },
+    { label: 'Compilations', icon: 'i-lucide-film', to: '/compilations' },
     {
       label: 'Inbox',
       icon: 'i-lucide-inbox',

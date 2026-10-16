@@ -176,7 +176,7 @@ export class ClipService {
       .select({ clip: clips, projectName: projects.name })
       .from(clips)
       .innerJoin(projects, eq(projects.id, clips.projectId))
-      .where(and(eq(clips.status, 'approved'), isNull(projects.deletedAt)))
+      .where(and(eq(clips.status, 'approved'), ne(clips.origin, 'compilation'), isNull(projects.deletedAt)))
       .orderBy(desc(clips.createdAt))
       .all()
     const latest = this.latestRenders(rows.map((r) => r.clip.id))

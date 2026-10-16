@@ -1,3 +1,4 @@
+export * from './credit'
 export * from './engine'
 export * from './faces'
 export * from './fonts'

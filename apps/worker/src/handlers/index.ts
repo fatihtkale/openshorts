@@ -4,6 +4,7 @@ import type {
   AccountService,
   AiSettingsDto,
   ClipService,
+  CompilationService,
   JobPayload,
   JobRow,
   JobType,
@@ -23,6 +24,7 @@ import { createHighlightsHandler } from './highlights'
 import { createModelDownloadHandler } from './models'
 import { createPrepareHandler } from './prepare'
 import { createPublishHandler } from './publish'
+import { createCompilationHandler } from './compilation'
 import { createRenderHandler } from './render'
 import { createStatsHandler } from './stats'
 import { createRetimeHandler, createTranscribeHandler } from './transcribe'
@@ -58,6 +60,7 @@ export interface HandlerDeps {
   /** A manual database snapshot (Settings → Back up now). */
   backupNow: () => Promise<{ name: string; bytes: number }>
   renders: RenderService
+  compilations: CompilationService
   posts: PostService
   accounts: AccountService
   socialApps: SocialApps
@@ -76,6 +79,7 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
     'transcript.retime': createRetimeHandler(deps),
     'models.download': createModelDownloadHandler(deps),
     'clip.render': createRenderHandler(deps),
+    'compilation.render': createCompilationHandler(deps),
     'post.publish': createPublishHandler(deps),
     'post.stats': createStatsHandler(deps),
     'clips.find': createFindClipsHandler(deps),
@@ -90,11 +94,12 @@ export function createHandlers(deps: HandlerDeps): JobHandlers {
 }
 
 /** Runs when a job stops for good (out of retries, or cancelled), so its project can show what happened. */
-export function createGiveUpHook({ projects, transcripts, renders, posts }: HandlerDeps) {
+export function createGiveUpHook({ projects, transcripts, renders, posts, compilations }: HandlerDeps) {
   return (job: JobRow, outcome: 'failed' | 'cancelled') => {
     projects.jobGaveUp(job, outcome)
     transcripts.jobGaveUp(job, outcome)
     renders.jobGaveUp(job, outcome)
     posts.jobGaveUp(job, outcome)
+    compilations.jobGaveUp(job, outcome)
   }
 }

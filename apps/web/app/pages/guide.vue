@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CAPTION_PRESETS } from '@clipstudio/captions'
-import { DEFAULT_SCHEDULE, DROP_OFF_MS, MUTE_TEST_LABELS, PILLARS, POST_STATUS_LABELS, SHORT_ARC_MS, SWEET_SPOT_MAX_MS, SWEET_SPOT_MIN_MS } from '@clipstudio/core/shared'
+import { CREDIT_BANNER_MS, DEFAULT_SCHEDULE, DROP_OFF_MS, MUTE_TEST_LABELS, PILLARS, POST_STATUS_LABELS, SHORT_ARC_MS, SWEET_SPOT_MAX_MS, SWEET_SPOT_MIN_MS } from '@clipstudio/core/shared'
 
 /**
  * The Guide: how Clip Studio works and how to use it, written for someone opening it for the first time
@@ -18,6 +18,7 @@ const toc = [
   { id: 'twitch', label: 'Twitch VODs and clips', icon: 'i-simple-icons-twitch' },
   { id: 'posting', label: 'Posting to YouTube', icon: 'i-simple-icons-youtube' },
   { id: 'scheduling', label: 'Scheduling', icon: 'i-lucide-calendar-days' },
+  { id: 'compilations', label: 'Compilations', icon: 'i-lucide-film' },
   { id: 'insights', label: 'Insights', icon: 'i-lucide-chart-column' },
   { id: 'data', label: 'Files and backups', icon: 'i-lucide-hard-drive' },
   { id: 'new-mac', label: 'Setting up a new Mac', icon: 'i-lucide-laptop' },
@@ -569,6 +570,32 @@ const glossary = [
             The Calendar shows the week in your <strong>audience’s time</strong> (New York by default), with your own time in grey next to each
             post (“+1” when that’s already the next day for you). An evening post in the US lands after midnight in Europe; switch to
             <strong>your time</strong> at the top right to see it that way. The time box for moving a post is in your time.
+          </p>
+        </GuideSection>
+
+        <!-- Compilations -->
+        <GuideSection id="compilations" title="Compilations" icon="i-lucide-film" lead="Your best clips as one long “funny moments” video, with a shoutout to every streamer.">
+          <ol class="list-decimal space-y-2 pl-5">
+            <li><ULink to="/compilations" class="text-primary">Compilations</ULink> → <strong>New compilation</strong>, give it a title.</li>
+            <li><strong>Add clips:</strong> approved clips from every project (uploaded ones first; turn that off to see all). Reorder them with the arrows.</li>
+            <li>
+              <strong>Credits:</strong> each clip opens with a banner for its first {{ CREDIT_BANNER_MS / 1000 }} seconds: the platform’s icon, the
+              streamer’s name and their link (twitch.tv/…). Twitch clips are filled in from the stream; check the name and channel next to each
+              clip, especially for reactions (the person on screen may not be the streamer). The preview shows the banner as it will look.
+            </li>
+            <li>
+              <strong>Export:</strong> one 1920×1080 video: every clip with its trims, the same loudness for every streamer, a short fade between
+              clips. It’s made on this Mac, clip by clip.
+            </li>
+            <li>
+              <strong>Post or schedule:</strong> the description is filled in with every streamer’s link and, when YouTube allows it (3+ clips,
+              each at least 10 s), chapters. It’s also on the Schedule page like any export.
+            </li>
+          </ol>
+          <p>
+            The finished video also appears under Projects, so you can cut Shorts from it. Changing the compilation after exporting it means
+            exporting again before posting. Only use clips from creators who agreed to being clipped; compilations of other people’s clips
+            should add something (the order, the credits), or YouTube may see it as reused content.
           </p>
         </GuideSection>
 

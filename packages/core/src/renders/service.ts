@@ -20,6 +20,7 @@ export class RenderService {
     const clip = this.db.select().from(clips).where(eq(clips.id, clipId)).get()
     if (!clip) throw new ProjectError('Clip not found', 'not_found')
     if (clip.status !== 'approved') throw new ProjectError('Approve the clip before exporting it', 'conflict')
+    if (clip.origin === 'compilation') throw new ProjectError('Export a compilation from the Compilations page', 'conflict')
     const project = this.db.select().from(projects).where(eq(projects.id, clip.projectId)).get()
     if (!project || project.status !== 'ready' || project.deletedAt) throw new ProjectError('The video is not ready', 'conflict')
     const busy = this.db

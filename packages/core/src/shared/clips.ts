@@ -8,8 +8,11 @@ import type { Word } from './transcripts'
 export const CLIP_STATUSES = ['proposed', 'approved', 'rejected'] as const
 export type ClipStatus = (typeof CLIP_STATUSES)[number]
 
-/** claude: suggested by an AI; manual: made by hand; imported: the whole video is the clip (a Twitch clip). */
-export const CLIP_ORIGINS = ['claude', 'manual', 'imported'] as const
+/**
+ * claude: suggested by an AI; manual: made by hand; imported: the whole video is the clip (a Twitch clip);
+ * compilation: a compilation's finished landscape video, posted as is (never re-exported as a vertical clip).
+ */
+export const CLIP_ORIGINS = ['claude', 'manual', 'imported', 'compilation'] as const
 export type ClipOrigin = (typeof CLIP_ORIGINS)[number]
 
 /** Hard limits for a clip; the sweet spot (22–45 s) and its warnings live in `evaluation.ts`. */

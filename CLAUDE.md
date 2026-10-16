@@ -154,6 +154,19 @@ existing transcripts (`TranscriptService.retime` keeps text fixes). Exports made
   partial-download project per picked moment. MCP: `get_highlights`.
 - Sources: small creators who agreed to being clipped.
 
+## Compilations (long "funny moments" videos)
+
+- `compilations` table (`CompilationService`, `shared/compilations.ts`): title, ordered items `{ clipId, credit }`
+  (credit = platform, name, handle; `defaultCredit` fills it from a Twitch project's channel), version/renderedVersion.
+- Export is the `compilation.render` job (group render): per clip `measureLoudness` (ebur128, audio only) →
+  `renderCompilationPart` (1920×1080 fit, trims kept, gain to -16 LUFS capped ±15 dB + limiter, 0.15 s fades, credit
+  banner `drawCredit` from packages/captions for `CREDIT_BANNER_MS`) → `joinParts` (concat, no re-encode). Never use
+  `loudnorm` here: it turns silence (muted VOD parts) into NaN and AAC refuses it.
+- The result becomes a project with `sourceType: 'compilation'`, one clip with `origin: 'compilation'` (hidden from the
+  Clips library; `RenderService.request` refuses it) and a done render, then `media.prepare` runs on it. So posting,
+  scheduling, Calendar and Insights need no changes, and Shorts can be cut from it. `suggestCompilationText` writes
+  chapters (only when YouTube would show them: ≥ 3, first at 0:00, each ≥ 10 s) and the streamers' links.
+
 ## Clip evaluation (the Shorts rubric)
 
 - [docs/shorts-playbook.md](docs/shorts-playbook.md) is the background (what YouTube measures, hooks, endings, posting,

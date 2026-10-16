@@ -18,7 +18,8 @@ import {
  * For TikTok this follows TikTok's posting rules: the creator's own privacy choices (none preselected),
  * interaction switches, commercial-content disclosure and the music-usage consent line.
  */
-const props = defineProps<{ clip: ClipDto; render: RenderDto }>()
+/** `suggestion` replaces the suggested YouTube text (a compilation suggests its chapters and credits). */
+const props = defineProps<{ clip: ClipDto; render: RenderDto; suggestion?: { title: string; description: string; tags: string[] } }>()
 const open = defineModel<boolean>('open', { required: true })
 const emit = defineEmits<{ posted: [post: PostDto] }>()
 const toast = useToast()
@@ -80,7 +81,7 @@ watch(
   async () => {
     const p = platform.value
     if (!p) return
-    const s = suggestPostText(props.clip, p, postingDefaults.value?.hashtags ?? '')
+    const s = props.suggestion && p === 'youtube' ? props.suggestion : suggestPostText(props.clip, p, postingDefaults.value?.hashtags ?? '')
     title.value = s.title
     description.value = s.description
     tags.value = s.tags.join(', ')

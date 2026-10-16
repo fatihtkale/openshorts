@@ -61,7 +61,8 @@ export function createPrepareHandler(deps: HandlerDeps): JobHandler<'media.prepa
     if (project.sourceMeta?.twitch?.kind === 'clip') clips.createImported(projectId, project.name)
 
     // Long videos and Twitch VODs get a highlights map (loud moments, what viewers clipped).
-    if (info.hasAudio && (project.sourceMeta?.twitch?.kind === 'vod' || info.durationMs >= 10 * 60_000)) {
+    // (Not for compilations: they're made of clips already picked.)
+    if (info.hasAudio && project.sourceType !== 'compilation' && (project.sourceMeta?.twitch?.kind === 'vod' || info.durationMs >= 10 * 60_000)) {
       deps.queue.enqueue('media.highlights', { projectId }, { projectId })
     }
 

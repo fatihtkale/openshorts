@@ -64,6 +64,12 @@ export const jobDefinitions = {
     maxAttempts: 2,
     payload: z.object({ renderId: z.string() }),
   },
+  'compilation.render': {
+    label: 'Export compilation',
+    group: 'render',
+    maxAttempts: 2,
+    payload: z.object({ compilationId: z.string(), version: z.number().int() }),
+  },
   'post.publish': {
     label: 'Post video',
     group: 'upload',

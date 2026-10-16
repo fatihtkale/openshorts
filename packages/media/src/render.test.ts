@@ -1,9 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CAPTION_PRESETS, defaultEdit, drawCaptions, OUT_H, OUT_W, pageAt, paginate, type CaptionWord } from '@clipstudio/captions'
+import { CAPTION_PRESETS, defaultEdit, drawCaptions, drawCredit, OUT_H, OUT_W, pageAt, paginate, type CaptionWord } from '@clipstudio/captions'
 import { createCanvas } from '@napi-rs/canvas'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { joinParts, loudnessGain, measureLoudness, parseIntegratedLoudness, renderCompilationPart } from './compilation'
 import { ffmpeg } from './ffmpeg'
 import { probe } from './ffprobe'
 import { cropCommands, registerCaptionFonts, renderClip, selectExpression } from './render'
@@ -102,4 +103,66 @@ describe.skipIf(!hasFfmpeg)('renderClip (real ffmpeg)', () => {
       expect(info.durationMs).toBeLessThan(2200)
     }, 60_000)
   }
+})
+
+describe.skipIf(!hasFfmpeg)('compilation parts (real ffmpeg)', () => {
+  let dir: string
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'clipstudio-compilation-'))
+    await ffmpeg([
+      '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100',
+      '-t', '4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', join(dir, 'wide.mp4'),
+    ])
+    // A silent 4:3 source: gets black bars and a silent track, so it still joins with the others.
+    await ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=640x480:rate=25', '-t', '3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', join(dir, 'square.mp4')])
+  }, 60_000)
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('renders landscape parts with a credit banner and joins them', async () => {
+    const base = { width: 1920, height: 1080, encoder: 'libx264' as const }
+    const lufs = await measureLoudness(join(dir, 'wide.mp4'), [{ start: 500, end: 3500 }])
+    expect(lufs).toBeGreaterThan(-30)
+    expect(lufs).toBeLessThan(0)
+    expect(await measureLoudness(join(dir, 'square.mp4'), [{ start: 0, end: 2000 }])).toBeNull()
+    const a = join(dir, 'a.mp4')
+    const b = join(dir, 'b.mp4')
+    await renderCompilationPart({
+      ...base,
+      src: join(dir, 'wide.mp4'),
+      source: { width: 1280, height: 720, hasAudio: true },
+      segments: [{ start: 500, end: 1500 }, { start: 2000, end: 3500 }],
+      gainDb: loudnessGain(lufs),
+      banner: { credit: { platform: 'twitch', name: 'omie', line: 'twitch.tv/omie' }, durationMs: 1500 },
+      out: a,
+    })
+    await renderCompilationPart({ ...base, src: join(dir, 'square.mp4'), source: { width: 640, height: 480, hasAudio: false }, segments: [{ start: 0, end: 2000 }], gainDb: 0, banner: null, out: b })
+    const out = join(dir, 'all.mp4')
+    await joinParts([a, b], out, dir)
+    const info = await probe(out)
+    expect(info).toMatchObject({ width: 1920, height: 1080, hasAudio: true })
+    expect(info.durationMs).toBeGreaterThan(4300)
+    expect(info.durationMs).toBeLessThan(4800)
+  }, 120_000)
+
+  it('reads loudness and caps the gain', () => {
+    expect(parseIntegratedLoudness('  Integrated loudness:\n    I:         -23.4 LUFS\n')).toBe(-23.4)
+    expect(parseIntegratedLoudness('I: -70.0 LUFS')).toBeNull()
+    expect(parseIntegratedLoudness('nothing')).toBeNull()
+    expect(loudnessGain(-23.4)).toBeCloseTo(7.4)
+    expect(loudnessGain(-60)).toBe(15)
+    expect(loudnessGain(null)).toBe(0)
+  })
+
+  it('draws every platform banner without throwing', () => {
+    registerCaptionFonts()
+    const ctx = createCanvas(1920, 1080).getContext('2d') as unknown as CanvasRenderingContext2D
+    for (const platform of ['twitch', 'youtube', 'kick', 'tiktok', 'other']) {
+      for (const t of [0, 200, 2000, 3900]) drawCredit(ctx, { platform, name: 'Streamer', line: 'site/streamer' }, t, 4000, 1920, 1080)
+    }
+  })
 })

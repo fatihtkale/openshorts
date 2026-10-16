@@ -6,6 +6,7 @@ import { PLATFORMS, POST_STATUSES, type TiktokPostOptions, type YoutubePostOptio
 import type { ClipEdit } from '@clipstudio/captions'
 import { CLIP_ORIGINS, CLIP_STATUSES, PROPOSAL_KINDS, PROPOSAL_STATUSES, RENDER_STATUSES } from '../shared/clips'
 import type { ClipEvaluation } from '../shared/evaluation'
+import { COMPILATION_STATUSES, type CompilationChapter, type CompilationItem } from '../shared/compilations'
 
 export const jobs = sqliteTable(
   'jobs',
@@ -262,6 +263,26 @@ export const postStats = sqliteTable(
   (t) => [index('post_stats_post_idx').on(t.postId)],
 )
 
+/**
+ * A long video made from other projects' clips, each with a credit banner. Its export becomes a project of its own
+ * (sourceType 'compilation') with one "Full video" clip, so it posts, schedules and shows in Insights like any clip.
+ */
+export const compilations = sqliteTable('compilations', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  items: text('items', { mode: 'json' }).$type<CompilationItem[]>().notNull(),
+  status: text('status', { enum: COMPILATION_STATUSES }).notNull(),
+  error: text('error'),
+  version: integer('version').notNull().default(1),
+  renderedVersion: integer('rendered_version'),
+  durationMs: integer('duration_ms'),
+  chapters: text('chapters', { mode: 'json' }).$type<CompilationChapter[]>(),
+  /** The project holding the finished video; set null if that project is deleted (the next export makes a new one). */
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 export type JobRow = typeof jobs.$inferSelect
 export type ProjectRow = typeof projects.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
@@ -272,3 +293,4 @@ export type RenderRow = typeof renders.$inferSelect
 export type AccountRow = typeof accounts.$inferSelect
 export type PostRow = typeof posts.$inferSelect
 export type PostStatsRow = typeof postStats.$inferSelect
+export type CompilationRow = typeof compilations.$inferSelect

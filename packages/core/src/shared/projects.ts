@@ -4,7 +4,8 @@ import type { TranscriptSummary } from './transcripts'
 export const PROJECT_STATUSES = ['importing', 'processing', 'ready', 'failed'] as const
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
 
-export const SOURCE_TYPES = ['youtube', 'upload', 'twitch'] as const
+/** compilation: a video made from other projects' clips (the Compilations page). */
+export const SOURCE_TYPES = ['youtube', 'upload', 'twitch', 'compilation'] as const
 export type SourceType = (typeof SOURCE_TYPES)[number]
 
 export const ASSET_KINDS = ['source', 'proxy', 'audio', 'thumbnail', 'faces', 'highlights'] as const
