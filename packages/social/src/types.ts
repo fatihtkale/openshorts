@@ -24,4 +24,6 @@ export interface UploadFile {
   path: string
   bytes: number
   mimeType: string
+  /** A long landscape video (a compilation), not a Short: its link is a normal watch link. */
+  longForm?: boolean
 }

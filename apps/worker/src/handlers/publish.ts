@@ -2,7 +2,7 @@ import { publishPost } from '@clipstudio/social'
 import type { HandlerDeps, JobHandler } from './index'
 
 /** Uploads an export to YouTube or TikTok. Only ever queued after the user confirmed the post. */
-export function createPublishHandler({ posts, accounts, renders, storage, socialApps }: HandlerDeps): JobHandler<'post.publish'> {
+export function createPublishHandler({ posts, accounts, renders, clips, storage, socialApps }: HandlerDeps): JobHandler<'post.publish'> {
   return async ({ postId }, ctx) => {
     const post = posts.get(postId)
     if (!post) throw new Error('This post no longer exists.')
@@ -13,7 +13,12 @@ export function createPublishHandler({ posts, accounts, renders, storage, social
     const result = await publishPost(
       { posts, accounts, apps: socialApps },
       postId,
-      { path: await storage.localPath(render.storageKey), bytes: render.bytes, mimeType: 'video/mp4' },
+      {
+        path: await storage.localPath(render.storageKey),
+        bytes: render.bytes,
+        mimeType: 'video/mp4',
+        longForm: clips.require(render.clipId).origin === 'compilation',
+      },
       { signal: ctx.signal, onProgress: (f, message) => ctx.progress(f, message) },
     )
     return result

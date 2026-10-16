@@ -101,7 +101,10 @@ existing transcripts (`TranscriptService.retime` keeps text fixes). Exports made
   Waiting posts change locally; YouTube videos (scheduled/published) are updated via `videos.update` first (needs the
   `youtube.force-ssl` scope, so older sign-ins reconnect once: `AccountDto.canEditVideos`). TikTok can't be edited once up.
   Moving a scheduled YouTube video (`reschedulePost`) sets `status.publishAt` via `videos.update` first, then `saveMove`
-  stores it and re-plans the `post.stats` checks. Uploads use category 24 (Entertainment, `YOUTUBE_CATEGORY_ID`) and, by
+  stores it and re-plans the `post.stats` checks.
+  `videos.update` replaces the whole part it's given, so `youtubeUpdateStatus` / `youtubeUpdateText` read the current
+  status/snippet and write it back with only the change (a bare status update once switched embedding and public view
+  counts off on 19 videos). Uploads use category 24 (Entertainment, `YOUTUBE_CATEGORY_ID`) and, by
   default, no hashtags, tags or description (`suggestPostText`, see docs/shorts-playbook.md).
   "Related video" isn't in YouTube's API: `youtube.relatedVideo` is a reminder shown next to `youtubeStudioUrl`.
   Default hashtags: `ScheduleDefaults.hashtags` → `suggestPostText(..., defaultHashtags)` (casing kept, put first).

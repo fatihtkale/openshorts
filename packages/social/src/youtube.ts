@@ -220,8 +220,9 @@ export async function youtubeUpload(
   return { videoId: result.id }
 }
 
-export function youtubeVideoUrl(videoId: string): string {
-  return `https://www.youtube.com/shorts/${videoId}`
+/** The link to a video: the Shorts player for Shorts, the normal watch page for long videos. */
+export function youtubeVideoUrl(videoId: string, longForm = false): string {
+  return longForm ? `https://www.youtube.com/watch?v=${videoId}` : `https://www.youtube.com/shorts/${videoId}`
 }
 
 export interface VideoStats {
@@ -255,6 +256,30 @@ export async function youtubeStats(token: string, videoIds: string[], ep = YOUTU
  * Moves a scheduled (private) video's publish time. YouTube replaces the whole status part, so privacy and the
  * made-for-kids answer are sent again. Needs the youtube.force-ssl scope.
  */
+/** The parts of a video's status that can be written back (YouTube replaces the whole status part on update). */
+const WRITABLE_STATUS = ['privacyStatus', 'publishAt', 'license', 'embeddable', 'publicStatsViewable', 'selfDeclaredMadeForKids', 'containsSyntheticMedia'] as const
+type VideoStatus = Partial<Record<(typeof WRITABLE_STATUS)[number], unknown>>
+
+/**
+ * Changes some of a video's status settings and keeps the rest. videos.update replaces the whole status part, so
+ * anything left out is reset (embedding off, view count hidden); this reads the current status and writes it back
+ * with only `changes` applied.
+ */
+export async function youtubeUpdateStatus(token: string, videoId: string, changes: VideoStatus, ep = YOUTUBE_ENDPOINTS): Promise<VideoStatus> {
+  const current = await api<{ items?: { status?: Record<string, unknown> }[] }>(`${ep.api}/videos?part=status&id=${encodeURIComponent(videoId)}`, token)
+  const now = current.items?.[0]?.status
+  if (!now) throw new SocialError('This video is no longer on YouTube.', 'invalid', false)
+  const kept: VideoStatus = {}
+  for (const k of WRITABLE_STATUS) if (now[k] !== undefined) kept[k] = now[k]
+  const status = { ...kept, ...changes }
+  await api(`${ep.api}/videos?part=status`, token, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: videoId, status }),
+  })
+  return status
+}
+
 export async function youtubeSetPublishAt(
   token: string,
   videoId: string,
@@ -262,11 +287,34 @@ export async function youtubeSetPublishAt(
   madeForKids: boolean,
   ep = YOUTUBE_ENDPOINTS,
 ): Promise<void> {
-  await api(`${ep.api}/videos?part=status`, token, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: videoId, status: { privacyStatus: 'private', publishAt, selfDeclaredMadeForKids: madeForKids } }),
+  await youtubeUpdateStatus(token, videoId, { privacyStatus: 'private', publishAt, selfDeclaredMadeForKids: madeForKids }, ep)
+}
+
+/** The largest custom thumbnail YouTube takes. */
+export const YOUTUBE_THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024
+
+/**
+ * Sets a video's custom thumbnail (JPEG or PNG, at most 2 MB; 1280×720 recommended). YouTube only allows custom
+ * thumbnails on verified channels; that refusal gets a message saying how to verify.
+ */
+export async function youtubeSetThumbnail(token: string, videoId: string, image: Buffer, mimeType: string, ep = YOUTUBE_ENDPOINTS): Promise<void> {
+  const res = await fetch(`${ep.upload}/thumbnails/set?videoId=${encodeURIComponent(videoId)}&uploadType=media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': mimeType, 'Content-Length': String(image.length) },
+    body: new Uint8Array(image),
+  }).catch((e: Error) => {
+    throw new SocialError(`Could not reach YouTube: ${e.message}`, 'network')
   })
+  if (res.ok) return
+  const body = (await res.json().catch(() => ({}))) as GoogleApiError
+  if (res.status === 403 && /thumbnail/i.test(body.error?.message ?? '')) {
+    throw new SocialError(
+      'YouTube only allows custom thumbnails on verified channels. Verify the channel with a phone number in YouTube Studio (Settings → Channel → Feature eligibility), then try again.',
+      'forbidden',
+      false,
+    )
+  }
+  throw youtubeError(res.status, body)
 }
 
 export async function youtubeUpdateText(
@@ -275,9 +323,14 @@ export async function youtubeUpdateText(
   text: { title: string; description: string; tags: string[] },
   ep = YOUTUBE_ENDPOINTS,
 ): Promise<void> {
+  // Like status, the snippet is replaced whole: keep its other writable fields (languages) as they are.
+  const current = await api<{ items?: { snippet?: Record<string, unknown> }[] }>(`${ep.api}/videos?part=snippet&id=${encodeURIComponent(videoId)}`, token)
+  const now = current.items?.[0]?.snippet ?? {}
+  const kept: Record<string, unknown> = {}
+  for (const k of ['categoryId', 'defaultLanguage', 'defaultAudioLanguage']) if (now[k] !== undefined) kept[k] = now[k]
   await api(`${ep.api}/videos?part=snippet`, token, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: videoId, snippet: { title: text.title, description: text.description, tags: text.tags, categoryId: YOUTUBE_CATEGORY_ID } }),
+    body: JSON.stringify({ id: videoId, snippet: { categoryId: YOUTUBE_CATEGORY_ID, ...kept, title: text.title, description: text.description, tags: text.tags } }),
   })
 }

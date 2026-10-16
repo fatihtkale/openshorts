@@ -20,7 +20,7 @@ import { SocialError } from './errors'
 import { challengeBase64Url, challengeHex, codeVerifier } from './pkce'
 import { accessToken, publishPost, type SocialApps } from './publish'
 import { collectPostStats } from './stats'
-import { editPostText, reschedulePost } from './edit'
+import { editPostText, reschedulePost, setPostThumbnail } from './edit'
 import { YOUTUBE_EDIT_SCOPE } from './youtube'
 import { parseTwitchDuration, resetTwitchToken, twitchVod, twitchVodClips } from './twitch-api'
 import { tiktokAuthUrl, tiktokChunks, tiktokError, tiktokExchangeCode } from './tiktok'
@@ -64,11 +64,25 @@ beforeAll(async () => {
     }
     if (url.pathname === '/yt/videos' && req.method === 'GET') {
       const ids = (url.searchParams.get('id') ?? '').split(',')
-      return json(res, 200, { items: ids.filter((id) => id === 'vid42').map((id) => ({ id, statistics: { viewCount: '1234', likeCount: '56', commentCount: '7' } })) })
+      return json(res, 200, {
+        items: ids
+          .filter((id) => id === 'vid42')
+          .map((id) => ({
+            id,
+            statistics: { viewCount: '1234', likeCount: '56', commentCount: '7' },
+            status: { uploadStatus: 'processed', privacyStatus: 'private', publishAt: '2026-01-01T00:00:00Z', license: 'youtube', embeddable: true, publicStatsViewable: true, madeForKids: false, selfDeclaredMadeForKids: false },
+          })),
+      })
     }
     if (url.pathname === '/yt/videos' && req.method === 'PUT') return json(res, 200, { id: 'vid42' })
     if (url.pathname === '/ytup/videos' && req.method === 'POST') return json(res, 200, {}, { location: `${base}/ytup/session/1` })
     if (url.pathname === '/ytup/session/1' && req.method === 'PUT') return json(res, 200, { id: 'vid42' })
+    if (url.pathname === '/ytup/thumbnails/set') {
+      if (url.searchParams.get('videoId') === 'unverified') {
+        return json(res, 403, { error: { message: "The authenticated user doesn't have permissions to upload and set custom video thumbnails.", errors: [{ reason: 'forbidden' }] } })
+      }
+      return json(res, 200, { items: [{ default: { url: 'https://i.ytimg.com/x.jpg' } }] })
+    }
 
     // TikTok
     if (url.pathname === '/tt/v2/oauth/token/') {
@@ -333,6 +347,24 @@ describe('publishPost', () => {
     expect(updated).toMatchObject({ title: 'Marty saves Lang #Shorts', description: '#NoPixel #GTARP' })
   })
 
+  it('sets a thumbnail on a video that is on YouTube, and explains the verified-channel rule', async () => {
+    const tokens = { accessToken: 'tok', refreshToken: 'r', expiresAt: Date.now() + 3_600_000, refreshExpiresAt: null }
+    const a = accounts.connect('youtube', { externalId: 'UC1', displayName: 'Chan', username: null, avatarUrl: null }, { ...tokens, scopes: [YOUTUBE_EDIT_SCOPE] })
+    const post = posts.create({ renderId, accountId: a.id, title: 'Compilation', youtube: { privacy: 'public', tags: [], madeForKids: false } })
+    const deps = { posts, accounts, apps, endpoints: { youtube: yt() } }
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+    await expect(setPostThumbnail(deps, post.id, jpeg, 'image/jpeg')).rejects.toThrow(/on YouTube/)
+    posts.setStatus(post.id, 'published', { remoteId: 'vid42', publishedAt: new Date() })
+    await expect(setPostThumbnail(deps, post.id, jpeg, 'image/gif')).rejects.toThrow(/JPEG or PNG/)
+    seen.length = 0
+    await setPostThumbnail(deps, post.id, jpeg, 'image/jpeg')
+    const sent = seen.find((x) => x.path === '/ytup/thumbnails/set')!
+    expect(sent.headers['content-type']).toBe('image/jpeg')
+    expect(sent.body.equals(jpeg)).toBe(true)
+    posts.update(post.id, { remoteId: 'unverified' })
+    await expect(setPostThumbnail(deps, post.id, jpeg, 'image/jpeg')).rejects.toThrow(/verified channels/)
+  })
+
   it('moves a scheduled YouTube video on YouTube first, and its view checks with it', async () => {
     const tokens = { accessToken: 'tok', refreshToken: 'r', expiresAt: Date.now() + 3_600_000, refreshExpiresAt: null }
     const a = accounts.connect('youtube', { externalId: 'UC1', displayName: 'Chan', username: null, avatarUrl: null }, { ...tokens, scopes: [YOUTUBE_EDIT_SCOPE] })
@@ -347,9 +379,18 @@ describe('publishPost', () => {
     seen.length = 0
     const moved = await reschedulePost({ posts, accounts, apps, endpoints: { youtube: yt() } }, post.id, newTime)
     const put = seen.find((x) => x.path === '/yt/videos' && x.method === 'PUT')!
+    // Only the time changes: embedding, public view counts and the licence stay as they were (YouTube resets
+    // whatever a status update leaves out), and read-only fields like uploadStatus aren't sent back.
     expect(JSON.parse(put.body.toString())).toEqual({
       id: 'vid42',
-      status: { privacyStatus: 'private', publishAt: new Date(newTime).toISOString(), selfDeclaredMadeForKids: false },
+      status: {
+        privacyStatus: 'private',
+        publishAt: new Date(newTime).toISOString(),
+        license: 'youtube',
+        embeddable: true,
+        publicStatsViewable: true,
+        selfDeclaredMadeForKids: false,
+      },
     })
     expect(moved).toMatchObject({ status: 'scheduled', scheduledAt: newTime })
     expect(statsRuns().sort()).toEqual([newTime + 48 * 3_600_000, newTime + 7 * 24 * 3_600_000])

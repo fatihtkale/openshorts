@@ -138,7 +138,7 @@ async function sendPost(
       },
       { signal: opts.signal, onProgress: (f) => opts.onProgress?.(f * 0.98, 'Uploading to YouTube'), endpoints: deps.endpoints?.youtube },
     )
-    const url = youtubeVideoUrl(videoId)
+    const url = youtubeVideoUrl(videoId, file.longForm)
     const status = scheduledFor ? 'scheduled' : 'published'
     posts.setStatus(postId, status, { remoteId: videoId, url, publishedAt: status === 'published' ? new Date() : null })
     return { status, url }
